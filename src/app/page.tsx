@@ -3,24 +3,14 @@
 import { useState } from "react";
 import { LoginScreen } from "./components/LoginScreen";
 import { ProjectSelect } from "./components/ProjectSelect";
-import { BlueprintBoard } from "./components/BlueprintBoard";
-
-interface Project {
-    id: number;
-    name: string;
-    workspace: string;
-    role: string;
-    progress: number;
-    memberCount: number;
-    lastActivity: string;
-    color: string;
-}
+import { BlueprintBoard } from "./components/board";
+import type { Project, AuthUser } from "@/types";
 
 export default function Home() {
-    const [user, setUser] = useState<{ email: string; name: string } | null>(null);
+    const [user, setUser] = useState<AuthUser | null>(null);
     const [selectedProject, setSelectedProject] = useState<Project | null>(null);
 
-    const handleLoginSuccess = (loggedInUser: { email: string; name: string }) => {
+    const handleLoginSuccess = (loggedInUser: AuthUser) => {
         setUser(loggedInUser);
     };
 
