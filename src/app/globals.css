@@ -1,48 +1,147 @@
 @import "tailwindcss";
 
 :root {
-  /* Light Mode */
+  /* Light Mode - Apple Clean White */
   --bg-primary: #ffffff;
-  --bg-secondary: #f7f7f8;
-  --bg-tertiary: #ececf1;
-  --bg-input: #f7f7f8;
-  --border-primary: #e5e5e5;
-  --border-secondary: #d1d1d6;
-  --text-primary: #202123;
-  --text-secondary: #6e6e80;
-  --text-tertiary: #8e8ea0;
-  --text-placeholder: #8e8ea0;
-  --accent: #202123;
-  --accent-hover: #353740;
-  --error: #ef4444;
+  --bg-secondary: rgba(245, 245, 247, 0.8);
+  --bg-tertiary: rgba(0, 0, 0, 0.03);
+  
+  /* Card - 불투명 */
+  --card-bg: #ffffff;
+  --card-border: rgba(0, 0, 0, 0.06);
+  --card-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  --card-shadow-hover: 0 8px 24px rgba(0, 0, 0, 0.12);
+  
+  /* Glass Effect */
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.5);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+  
+  /* Text */
+  --text-primary: #1d1d1f;
+  --text-secondary: #86868b;
+  --text-tertiary: #aeaeb2;
+  
+  /* Borders */
+  --border-primary: rgba(0, 0, 0, 0.08);
+  --border-secondary: rgba(0, 0, 0, 0.12);
+  
+  /* Accent - Apple Blue */
+  --accent: #0071e3;
+  --accent-hover: #0077ed;
+  
+  /* Status */
+  --success: #34c759;
+  --warning: #ff9f0a;
+  --error: #ff3b30;
+  
+  /* Modal Overlay */
+  --overlay: rgba(0, 0, 0, 0.4);
 }
 
 .dark {
-  /* Dark Mode - 눈 편한 톤 */
-  --bg-primary: #202123;
-  --bg-secondary: #2a2b32;
-  --bg-tertiary: #343541;
-  --bg-input: #2a2b32;
-  --border-primary: #3e3f4b;
-  --border-secondary: #4e4f5b;
-  --text-primary: #ececf1;
-  --text-secondary: #acacbe;
-  --text-tertiary: #6e6e80;
-  --text-placeholder: #6e6e80;
-  --accent: #ececf1;
-  --accent-hover: #d1d1d6;
-  --error: #f87171;
+  /* Dark Mode - Apple Dark */
+  --bg-primary: #000000;
+  --bg-secondary: rgba(28, 28, 30, 0.8);
+  --bg-tertiary: rgba(255, 255, 255, 0.05);
+  
+  /* Card - 불투명 (다크모드) */
+  --card-bg: #1c1c1e;
+  --card-border: rgba(255, 255, 255, 0.08);
+  --card-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+  --card-shadow-hover: 0 8px 24px rgba(0, 0, 0, 0.4);
+  
+  /* Glass Effect - Dark */
+  --glass-bg: rgba(30, 30, 32, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  
+  /* Text */
+  --text-primary: #f5f5f7;
+  --text-secondary: #a1a1a6;
+  --text-tertiary: #6e6e73;
+  
+  /* Borders */
+  --border-primary: rgba(255, 255, 255, 0.08);
+  --border-secondary: rgba(255, 255, 255, 0.12);
+  
+  /* Accent */
+  --accent: #0a84ff;
+  --accent-hover: #409cff;
+  
+  /* Status */
+  --success: #30d158;
+  --warning: #ffd60a;
+  --error: #ff453a;
+  
+  /* Modal Overlay */
+  --overlay: rgba(0, 0, 0, 0.7);
 }
 
 @theme inline {
   --color-background: var(--bg-primary);
   --color-foreground: var(--text-primary);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
+/* Base */
 body {
   background: var(--bg-primary);
   color: var(--text-primary);
-  font-family: var(--font-sans), -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Glass Card Utility */
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+
+.glass-subtle {
+  background: var(--glass-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border);
+}
+
+/* Solid Card Utility */
+.card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  box-shadow: var(--card-shadow);
+}
+
+.card:hover {
+  box-shadow: var(--card-shadow-hover);
+}
+
+/* Smooth Transitions */
+* {
+  transition-property: background-color, border-color, color, fill, stroke, opacity, box-shadow, transform;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--text-tertiary);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
 }

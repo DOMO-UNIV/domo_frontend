@@ -12,20 +12,16 @@ import {
 } from '@/lib/api';
 import type { Node, Connection, Member, EditingCard, Project } from '@/types';
 
-// ============================================
-// 메인 컴포넌트
-// ============================================
 interface BlueprintBoardProps {
     project: Project;
     onBack: () => void;
 }
 
 export function BlueprintBoard({ project, onBack }: BlueprintBoardProps) {
-    // 상태
     const [nodes, setNodes] = useState<Node[]>(MOCK_NODES);
-    const [connections] = useState<Connection[]>(MOCK_CONNECTIONS);
-    const [members] = useState<Member[]>(MOCK_MEMBERS);
-    const [editingCards] = useState<EditingCard[]>(MOCK_EDITING_CARDS);
+    const connections = MOCK_CONNECTIONS;
+    const members = MOCK_MEMBERS;
+    const editingCards = MOCK_EDITING_CARDS;
 
     const [isDark, setIsDark] = useState(() => {
         if (typeof window === 'undefined') return true;
@@ -38,16 +34,13 @@ export function BlueprintBoard({ project, onBack }: BlueprintBoardProps) {
     const [showMembers, setShowMembers] = useState(false);
     const canvasRef = useRef<HTMLDivElement>(null);
 
-    // 연결 모드 상태
     const [isConnecting, setIsConnecting] = useState(false);
     const [connectFrom, setConnectFrom] = useState<number | null>(null);
 
-    // 다크모드 적용
     useEffect(() => {
         document.documentElement.classList.toggle('dark', isDark);
     }, [isDark]);
 
-    // 드래그 핸들러
     const handleMouseDown = (e: React.MouseEvent, nodeId: number) => {
         if (isConnecting) {
             if (connectFrom === null) {
@@ -80,7 +73,6 @@ export function BlueprintBoard({ project, onBack }: BlueprintBoardProps) {
         setDraggingNode(null);
     };
 
-    // 노드 클릭 핸들러
     const handleNodeClick = (node: Node) => {
         if (isConnecting && connectFrom !== null && connectFrom !== node.id) {
             console.log(`연결: ${connectFrom} → ${node.id}`);
@@ -91,7 +83,6 @@ export function BlueprintBoard({ project, onBack }: BlueprintBoardProps) {
         }
     };
 
-    // 새 노드 추가
     const handleAddNode = () => {
         const newNode: Node = {
             id: Date.now(),
@@ -104,7 +95,6 @@ export function BlueprintBoard({ project, onBack }: BlueprintBoardProps) {
         setNodes([...nodes, newNode]);
     };
 
-    // 연결 모드 토글
     const handleToggleConnect = () => {
         setIsConnecting(!isConnecting);
         setConnectFrom(null);
@@ -116,68 +106,76 @@ export function BlueprintBoard({ project, onBack }: BlueprintBoardProps) {
             style={{ backgroundColor: 'var(--bg-primary)' }}
         >
             {/* Header */}
-            <header
-                className="h-14 border-b flex items-center justify-between px-6 flex-shrink-0"
-                style={{ borderColor: 'var(--border-primary)' }}
-            >
-                <div className="flex items-center gap-4">
-                    <button
-                        onClick={onBack}
-                        className="p-2 rounded-md transition-colors hover:bg-[var(--bg-secondary)]"
-                        style={{ color: 'var(--text-secondary)' }}
-                    >
-                        ← 뒤로
-                    </button>
-                    <div>
-                        <h1
-                            className="text-lg font-semibold"
-                            style={{ color: 'var(--text-primary)' }}
+            <header className="glass-subtle sticky top-0 z-50">
+                <div className="h-14 flex items-center justify-between px-6">
+                    <div className="flex items-center gap-4">
+                        <button
+                            onClick={onBack}
+                            className="w-9 h-9 rounded-xl flex items-center justify-center hover:bg-[var(--bg-tertiary)]"
+                            style={{ color: 'var(--text-secondary)' }}
                         >
-                            {project.name}
-                        </h1>
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+                            </svg>
+                        </button>
+                        <div>
+                            <h1
+                                className="text-base font-semibold"
+                                style={{ color: 'var(--text-primary)' }}
+                            >
+                                {project.name}
+                            </h1>
+                        </div>
                     </div>
-                </div>
 
-                <div className="flex items-center gap-3">
-                    <button
-                        onClick={handleToggleConnect}
-                        className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-                            isConnecting ? 'bg-blue-500 text-white' : ''
-                        }`}
-                        style={!isConnecting ? {
-                            backgroundColor: 'var(--bg-secondary)',
-                            color: 'var(--text-secondary)',
-                        } : {}}
-                    >
-                        {isConnecting ? '연결 중...' : '🔗 연결'}
-                    </button>
-
-                    <button
-                        onClick={handleAddNode}
-                        className="px-3 py-1.5 text-sm rounded-md transition-colors"
-                        style={{
-                            backgroundColor: 'var(--accent)',
-                            color: 'var(--bg-primary)',
-                        }}
-                    >
-                        + 노드 추가
-                    </button>
-
-                    <button
-                        onClick={() => setIsDark(!isDark)}
-                        className="p-2 rounded-md transition-colors hover:bg-[var(--bg-secondary)]"
-                    >
-                        {isDark ? (
-                            <svg className="w-4 h-4" fill="none" stroke="var(--text-secondary)" strokeWidth="2" viewBox="0 0 24 24">
-                                <circle cx="12" cy="12" r="5"/>
-                                <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={handleToggleConnect}
+                            className={`px-4 py-2 text-sm rounded-xl flex items-center gap-2 ${
+                                isConnecting ? 'text-white' : ''
+                            }`}
+                            style={isConnecting ? {
+                                backgroundColor: 'var(--accent)',
+                            } : {
+                                backgroundColor: 'var(--bg-tertiary)',
+                                color: 'var(--text-secondary)',
+                            }}
+                        >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
                             </svg>
-                        ) : (
-                            <svg className="w-4 h-4" fill="none" stroke="var(--text-secondary)" strokeWidth="2" viewBox="0 0 24 24">
-                                <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
+                            {isConnecting ? '연결 중...' : '연결'}
+                        </button>
+
+                        <button
+                            onClick={handleAddNode}
+                            className="px-4 py-2 text-sm rounded-xl flex items-center gap-2 text-white"
+                            style={{ backgroundColor: 'var(--accent)' }}
+                        >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
                             </svg>
-                        )}
-                    </button>
+                            노드 추가
+                        </button>
+
+                        <div className="w-px h-6 mx-1" style={{ backgroundColor: 'var(--border-primary)' }} />
+
+                        <button
+                            onClick={() => setIsDark(!isDark)}
+                            className="w-9 h-9 rounded-xl flex items-center justify-center hover:bg-[var(--bg-tertiary)]"
+                        >
+                            {isDark ? (
+                                <svg className="w-4 h-4" fill="none" stroke="var(--text-secondary)" strokeWidth="1.5" viewBox="0 0 24 24">
+                                    <circle cx="12" cy="12" r="5"/>
+                                    <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+                                </svg>
+                            ) : (
+                                <svg className="w-4 h-4" fill="none" stroke="var(--text-secondary)" strokeWidth="1.5" viewBox="0 0 24 24">
+                                    <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
+                                </svg>
+                            )}
+                        </button>
+                    </div>
                 </div>
             </header>
 
@@ -186,17 +184,16 @@ export function BlueprintBoard({ project, onBack }: BlueprintBoardProps) {
                 ref={canvasRef}
                 className="flex-1 relative overflow-auto cursor-grab active:cursor-grabbing"
                 style={{
-                    backgroundColor: 'var(--bg-secondary)',
+                    backgroundColor: 'var(--bg-primary)',
                     backgroundImage: isDark
-                        ? 'radial-gradient(circle, #4e4f5b 1px, transparent 1px)'
-                        : 'radial-gradient(circle, #d1d1d6 1px, transparent 1px)',
+                        ? 'radial-gradient(circle, rgba(255,255,255,0.05) 1px, transparent 1px)'
+                        : 'radial-gradient(circle, rgba(0,0,0,0.05) 1px, transparent 1px)',
                     backgroundSize: '24px 24px',
                 }}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
                 onMouseLeave={handleMouseUp}
             >
-                {/* 연결선 */}
                 <ConnectionLines
                     connections={connections}
                     nodes={nodes}
@@ -205,7 +202,6 @@ export function BlueprintBoard({ project, onBack }: BlueprintBoardProps) {
                     connectFrom={connectFrom}
                 />
 
-                {/* 노드들 */}
                 {nodes.map(node => (
                     <NodeCard
                         key={node.id}
@@ -230,23 +226,26 @@ export function BlueprintBoard({ project, onBack }: BlueprintBoardProps) {
 
             {/* 하단 상태바 */}
             <footer
-                className="h-8 border-t flex items-center justify-between px-6 flex-shrink-0"
-                style={{ borderColor: 'var(--border-primary)' }}
+                className="h-8 flex items-center justify-between px-6 flex-shrink-0"
+                style={{ 
+                    backgroundColor: 'var(--bg-secondary)',
+                    borderTop: '1px solid var(--border-primary)'
+                }}
             >
                 <div className="flex items-center gap-4 text-xs" style={{ color: 'var(--text-tertiary)' }}>
                     <span>노드 {nodes.length}개</span>
                     <span>연결 {connections.length}개</span>
                 </div>
                 <div className="flex items-center gap-4 text-xs" style={{ color: 'var(--text-tertiary)' }}>
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: '#22c55e' }} /> 완료
-          </span>
-                    <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: '#f59e0b' }} /> 진행중
-          </span>
-                    <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: 'var(--text-tertiary)' }} /> 예정
-          </span>
+                    <span className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: 'var(--success)' }} /> 완료
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: 'var(--warning)' }} /> 진행중
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: 'var(--text-tertiary)' }} /> 예정
+                    </span>
                 </div>
             </footer>
         </div>
