@@ -1,4 +1,5 @@
-import type { Node, Connection, Member, EditingCard } from '@/types';
+
+import type { Node, Connection, Member, EditingCard } from '../../types';
 import { API_CONFIG, apiFetch, mockDelay } from './config';
 import {
   MOCK_NODES,

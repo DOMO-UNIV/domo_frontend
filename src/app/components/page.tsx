@@ -1,11 +1,10 @@
-
 "use client";
 
 import { useState } from "react";
-import { LoginScreen } from "./components/LoginScreen";
-import { ProjectSelect } from "./components/ProjectSelect";
-import { WorkspaceBoard } from "./components/WorkspaceBoard";
-import type { Project, AuthUser } from "../types/index";
+import { LoginScreen } from "./LoginScreen";
+import { ProjectSelect } from "./ProjectSelect";
+import { BlueprintBoard } from "./board/BlueprintBoard";
+import type { Project, AuthUser } from "../../types";
 
 export default function Home() {
     const [user, setUser] = useState<AuthUser | null>(null);
@@ -44,13 +43,11 @@ export default function Home() {
         );
     }
 
-    // 3. 프로젝트 선택됨 → 워크스페이스 보드 (Request Match)
+    // 3. 프로젝트 선택됨 → 블루프린트 보드
     return (
-        <div className="h-screen w-full overflow-hidden">
-            <WorkspaceBoard
-                project={selectedProject}
-                onBack={handleBackToProjects}
-            />
-        </div>
+        <BlueprintBoard
+            project={selectedProject}
+            onBack={handleBackToProjects}
+        />
     );
 }

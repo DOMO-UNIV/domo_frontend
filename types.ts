@@ -1,6 +1,3 @@
-
-import { Modality } from "@google/genai";
-
 export interface Comment {
   id: string;
   user: string;
@@ -25,12 +22,12 @@ export interface Task {
   id: string;
   title: string;
   status: 'inbox' | 'todo' | 'doing' | 'done';
-  time?: string;
+  time?: string; // e.g., "14:00" or "YYYY-MM-DD|YYYY-MM-DD"
   color?: string;
   tags?: Tag[];
   description?: string;
   comments?: Comment[];
-  files?: TaskFile[];
+  files?: TaskFile[]; // Array of attached files
   x?: number;
   y?: number;
   boardId?: string;
@@ -147,56 +144,4 @@ export interface SignupResponse {
 
 export interface VerifyResponse {
   message: string;
-}
-
-// Gemini Types
-export enum AppMode {
-  Chat = 'chat',
-  Vision = 'vision',
-  Live = 'live',
-  Create = 'create'
-}
-
-export interface Message {
-  id: string;
-  role: 'user' | 'model';
-  text: string;
-  timestamp: number;
-  isLoading?: boolean;
-  groundingSources?: Array<{
-    title?: string;
-    uri?: string;
-  }>;
-  images?: string[];
-}
-
-export interface VideoGenerationStatus {
-  isGenerating: boolean;
-  progressMessage?: string;
-  videoUri?: string;
-  error?: string;
-}
-
-export type LiveConfig = {
-  model: string;
-  responseModalities: [Modality];
-  speechConfig: {
-    voiceConfig: {
-      prebuiltVoiceConfig: {
-        voiceName: string;
-      }
-    }
-  };
-  systemInstruction?: string;
-};
-
-declare global {
-  interface AIStudio {
-    hasSelectedApiKey: () => Promise<boolean>;
-    openSelectKey: () => Promise<void>;
-  }
-
-  interface Window {
-    webkitAudioContext: typeof AudioContext;
-  }
 }

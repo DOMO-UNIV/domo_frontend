@@ -1,220 +1,206 @@
-"use client";
 
-import React, { useState, useEffect } from 'react';
-import { getMyProjects, logout } from '@/lib/api';
-import type { Project, AuthUser } from '@/types';
+'use client';
+
+import React, { useEffect, useState } from 'react';
+import { getMyProjects, logout } from '../../lib/api/index';
+import type { Project, AuthUser } from '../../types/index';
+import { 
+  LogOut, 
+  Plus, 
+  Search, 
+  Folder, 
+  Clock, 
+  MoreHorizontal, 
+  Loader2,
+  Grid,
+  LayoutGrid
+} from 'lucide-react';
+import { Mascot } from './Mascot';
 
 interface ProjectSelectProps {
-    user: AuthUser;
-    onSelectProject: (project: Project) => void;
-    onLogout: () => void;
+  user: AuthUser;
+  onSelectProject: (project: Project) => void;
+  onLogout: () => void;
 }
 
-export function ProjectSelect({ user, onSelectProject, onLogout }: ProjectSelectProps) {
-    const [projects, setProjects] = useState<Project[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [isDark, setIsDark] = useState(() => {
-        if (typeof window === 'undefined') return true;
-        return window.matchMedia('(prefers-color-scheme: dark)').matches;
-    });
+export const ProjectSelect: React.FC<ProjectSelectProps> = ({ user, onSelectProject, onLogout }) => {
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
 
-    useEffect(() => {
-        document.documentElement.classList.toggle('dark', isDark);
-    }, [isDark]);
-
-    useEffect(() => {
-        loadProjects();
-    }, []);
-
-    const loadProjects = async () => {
-        try {
-            const data = await getMyProjects();
-            setProjects(data);
-        } catch (err) {
-            console.error(err);
-        } finally {
-            setIsLoading(false);
-        }
+  useEffect(() => {
+    const fetchProjects = async () => {
+      try {
+        const data = await getMyProjects();
+        setProjects(data);
+      } catch (error) {
+        console.error('Failed to fetch projects:', error);
+      } finally {
+        setLoading(false);
+      }
     };
+    fetchProjects();
+  }, []);
 
-    const handleLogout = async () => {
-        await logout();
-        onLogout();
-    };
+  const handleLogout = async () => {
+    await logout();
+    onLogout();
+  };
 
-    return (
-        <div
-            className="min-h-screen relative"
-            style={{ backgroundColor: 'var(--bg-primary)' }}
-        >
-            {/* 배경 그라데이션 */}
-            <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                <div 
-                    className="absolute top-0 right-0 w-[600px] h-[600px] rounded-full opacity-20 blur-3xl"
-                    style={{ background: isDark ? 'radial-gradient(circle, #1a1a2e 0%, transparent 70%)' : 'radial-gradient(circle, #e8e8ed 0%, transparent 70%)' }}
-                />
+  const filteredProjects = projects.filter(p => 
+    p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    p.workspace.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  return (
+    <div className="min-h-screen bg-gray-50 dark:bg-black text-gray-900 dark:text-white flex overflow-hidden">
+      {/* Background Ambience */}
+      <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute top-[-20%] right-[-10%] w-[800px] h-[800px] bg-blue-400/10 dark:bg-blue-900/10 rounded-full blur-[100px]"></div>
+          <div className="absolute bottom-[-20%] left-[-10%] w-[600px] h-[600px] bg-purple-400/10 dark:bg-purple-900/10 rounded-full blur-[100px]"></div>
+      </div>
+
+      {/* Sidebar - Glass Panel */}
+      <aside className="w-72 glass-panel z-20 flex flex-col border-r-0 m-4 rounded-[2rem]">
+        <div className="p-8 flex items-center gap-4">
+          <div className="relative">
+            <div className="absolute inset-0 bg-blue-500 blur-lg opacity-30 rounded-full"></div>
+            <Mascot size={36} className="relative z-10" />
+          </div>
+          <span className="font-semibold text-xl tracking-tight">DOMO</span>
+        </div>
+        
+        <div className="flex-1 px-4 py-2 space-y-6">
+          <div>
+            <h3 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-4 px-4">Menu</h3>
+            <button className="w-full flex items-center gap-3 px-4 py-3 bg-white/50 dark:bg-white/10 rounded-2xl text-sm font-medium text-gray-900 dark:text-white border border-white/20 shadow-sm backdrop-blur-sm transition-all hover:bg-white/70 dark:hover:bg-white/20">
+                <LayoutGrid size={18} className="text-blue-500" />
+                <span>모든 프로젝트</span>
+            </button>
+          </div>
+
+          <div>
+            <h3 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-4 px-4">Workspaces</h3>
+            <div className="space-y-2">
+              <button className="w-full flex items-center gap-3 px-4 py-3 hover:bg-black/5 dark:hover:bg-white/5 rounded-2xl text-sm text-gray-600 dark:text-gray-300 transition-colors">
+                <div className="w-2.5 h-2.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]"></div>
+                <span>캡스톤디자인</span>
+              </button>
+              <button className="w-full flex items-center gap-3 px-4 py-3 hover:bg-black/5 dark:hover:bg-white/5 rounded-2xl text-sm text-gray-600 dark:text-gray-300 transition-colors">
+                <div className="w-2.5 h-2.5 rounded-full bg-pink-500 shadow-[0_0_8px_rgba(236,72,153,0.5)]"></div>
+                <span>소프트웨어공학</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-4 mt-auto">
+          <div className="glass-card rounded-3xl p-4 mb-2">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-sm font-bold shadow-lg">
+                {user.name.slice(0, 2)}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold truncate">{user.name}</p>
+                <p className="text-xs text-gray-500 truncate">{user.email}</p>
+              </div>
+            </div>
+            <button 
+              onClick={handleLogout}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-medium text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-colors"
+            >
+              <LogOut size={14} />
+              <span>로그아웃</span>
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      {/* Main Content */}
+      <main className="flex-1 p-8 overflow-y-auto relative z-10">
+        <header className="flex justify-between items-end mb-10 max-w-7xl mx-auto">
+          <div>
+            <h1 className="text-4xl font-semibold mb-2 tracking-tight text-gray-900 dark:text-white">내 프로젝트</h1>
+            <p className="text-gray-500 dark:text-gray-400">최근 활동한 프로젝트 목록입니다.</p>
+          </div>
+          <button className="btn-primary flex items-center gap-2 px-5 py-3 rounded-2xl text-sm font-semibold shadow-lg shadow-blue-500/20">
+            <Plus size={18} />
+            <span>새 프로젝트</span>
+          </button>
+        </header>
+
+        <div className="max-w-7xl mx-auto">
+            <div className="relative mb-10">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+            <input 
+                type="text"
+                placeholder="프로젝트 검색..."
+                className="w-full max-w-md pl-12 pr-4 py-3.5 rounded-2xl text-sm shadow-sm"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+            />
             </div>
 
-            {/* Header */}
-            <header className="glass-subtle sticky top-0 z-50">
-                <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-                    <h1
-                        className="text-xl font-semibold tracking-tight"
-                        style={{ color: 'var(--text-primary)' }}
-                    >
-                        Domo
-                    </h1>
+            {loading ? (
+            <div className="flex items-center justify-center h-96">
+                <Loader2 className="animate-spin text-blue-500" size={40} />
+            </div>
+            ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                {filteredProjects.map((project) => (
+                <div 
+                    key={project.id}
+                    onClick={() => onSelectProject(project)}
+                    className="glass-card rounded-[2rem] p-6 cursor-pointer group relative overflow-hidden min-h-[220px] flex flex-col"
+                >
+                    {/* Glow effect on hover */}
+                    <div className="absolute -right-10 -top-10 w-32 h-32 bg-gradient-to-br from-blue-500 to-purple-500 opacity-0 group-hover:opacity-20 blur-3xl transition-opacity duration-500 rounded-full"></div>
+                    
+                    <div className="flex justify-between items-start mb-6 relative z-10">
+                    <div className={`p-3 rounded-2xl bg-gradient-to-br ${project.color === '#FEF3C7' ? 'from-orange-100 to-amber-200 dark:from-amber-900/30 dark:to-amber-800/30 text-amber-600 dark:text-amber-400' : project.color === '#DBEAFE' ? 'from-blue-100 to-cyan-200 dark:from-blue-900/30 dark:to-blue-800/30 text-blue-600 dark:text-blue-400' : 'from-pink-100 to-rose-200 dark:from-pink-900/30 dark:to-pink-800/30 text-pink-600 dark:text-pink-400'} shadow-inner`}>
+                        <Folder size={24} />
+                    </div>
+                    <button className="text-gray-400 hover:text-gray-600 dark:hover:text-white p-2 hover:bg-black/5 dark:hover:bg-white/10 rounded-full transition-colors">
+                        <MoreHorizontal size={20} />
+                    </button>
+                    </div>
 
-                    <div className="flex items-center gap-3">
-                        <button
-                            onClick={() => setIsDark(!isDark)}
-                            className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-[var(--bg-tertiary)]"
-                        >
-                            {isDark ? (
-                                <svg className="w-4 h-4" fill="none" stroke="var(--text-secondary)" strokeWidth="1.5" viewBox="0 0 24 24">
-                                    <circle cx="12" cy="12" r="5"/>
-                                    <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
-                                </svg>
-                            ) : (
-                                <svg className="w-4 h-4" fill="none" stroke="var(--text-secondary)" strokeWidth="1.5" viewBox="0 0 24 24">
-                                    <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
-                                </svg>
+                    <h3 className="font-bold text-xl mb-1 group-hover:text-blue-500 transition-colors">{project.name}</h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-6 font-medium">{project.workspace}</p>
+
+                    <div className="mt-auto pt-4 border-t border-gray-200/50 dark:border-white/5 flex items-center justify-between">
+                        <div className="flex items-center gap-1.5 text-xs font-medium text-gray-400">
+                            <Clock size={14} />
+                            <span>{project.lastActivity}</span>
+                        </div>
+                        
+                        <div className="flex -space-x-2">
+                            {[...Array(Math.min(project.memberCount, 3))].map((_, i) => (
+                            <div key={i} className="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 border-2 border-white dark:border-[#2c2c2e] flex items-center justify-center text-[10px] font-bold shadow-sm">
+                                U{i+1}
+                            </div>
+                            ))}
+                            {project.memberCount > 3 && (
+                            <div className="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-800 border-2 border-white dark:border-[#2c2c2e] flex items-center justify-center text-[10px] font-bold text-gray-500 shadow-sm">
+                                +{project.memberCount - 3}
+                            </div>
                             )}
-                        </button>
-
-                        <div 
-                            className="h-5 w-px"
-                            style={{ backgroundColor: 'var(--border-primary)' }}
-                        />
-
-                        <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                            {user.name}
-                        </span>
-                        <button
-                            onClick={handleLogout}
-                            className="text-sm px-3 py-1.5 rounded-lg hover:bg-[var(--bg-tertiary)]"
-                            style={{ color: 'var(--text-secondary)' }}
-                        >
-                            로그아웃
-                        </button>
-                    </div>
-                </div>
-            </header>
-
-            {/* Main */}
-            <main className="max-w-6xl mx-auto px-6 py-12 relative z-10">
-                <div className="mb-10">
-                    <h2
-                        className="text-3xl font-semibold mb-2 tracking-tight"
-                        style={{ color: 'var(--text-primary)' }}
-                    >
-                        워크스페이스
-                    </h2>
-                    <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                        프로젝트를 선택하여 작업을 시작하세요
-                    </p>
-                </div>
-
-                {isLoading ? (
-                    <div className="flex items-center justify-center py-20">
-                        <svg className="w-8 h-8 animate-spin" style={{ color: 'var(--text-tertiary)' }} viewBox="0 0 24 24" fill="none">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
-                        </svg>
-                    </div>
-                ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                        {projects.map(project => (
-                            <div
-                                key={project.id}
-                                onClick={() => onSelectProject(project)}
-                                className="glass rounded-2xl p-5 cursor-pointer hover:scale-[1.02] active:scale-[0.98] group"
-                            >
-                                {/* 상단: 역할 & 워크스페이스 */}
-                                <div className="flex items-center justify-between mb-4">
-                                    <span
-                                        className="text-xs px-2.5 py-1 rounded-full"
-                                        style={{
-                                            backgroundColor: 'var(--bg-tertiary)',
-                                            color: 'var(--text-secondary)',
-                                        }}
-                                    >
-                                        {project.role}
-                                    </span>
-                                    <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
-                                        {project.workspace}
-                                    </span>
-                                </div>
-
-                                {/* 프로젝트명 */}
-                                <h3
-                                    className="text-lg font-semibold mb-4 group-hover:text-[var(--accent)] transition-colors"
-                                    style={{ color: 'var(--text-primary)' }}
-                                >
-                                    {project.name}
-                                </h3>
-
-                                {/* 진행률 */}
-                                <div className="mb-4">
-                                    <div className="flex items-center justify-between text-xs mb-2">
-                                        <span style={{ color: 'var(--text-tertiary)' }}>진행률</span>
-                                        <span style={{ color: 'var(--text-primary)' }}>{project.progress}%</span>
-                                    </div>
-                                    <div
-                                        className="h-1 rounded-full overflow-hidden"
-                                        style={{ backgroundColor: 'var(--bg-tertiary)' }}
-                                    >
-                                        <div
-                                            className="h-full rounded-full transition-all duration-500"
-                                            style={{
-                                                width: `${project.progress}%`,
-                                                backgroundColor: project.progress === 100 ? 'var(--success)' : 'var(--accent)',
-                                            }}
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* 메타 정보 */}
-                                <div className="flex items-center gap-4 text-xs" style={{ color: 'var(--text-tertiary)' }}>
-                                    <span className="flex items-center gap-1">
-                                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
-                                        </svg>
-                                        {project.memberCount}
-                                    </span>
-                                    <span className="flex items-center gap-1">
-                                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                        </svg>
-                                        {project.lastActivity}
-                                    </span>
-                                </div>
-                            </div>
-                        ))}
-
-                        {/* 새 프로젝트 추가 */}
-                        <div
-                            className="rounded-2xl border-2 border-dashed flex flex-col items-center justify-center cursor-pointer hover:border-[var(--text-tertiary)] hover:bg-[var(--bg-tertiary)] transition-all group"
-                            style={{
-                                borderColor: 'var(--border-primary)',
-                                minHeight: '200px',
-                            }}
-                        >
-                            <div 
-                                className="w-12 h-12 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform"
-                                style={{ backgroundColor: 'var(--bg-tertiary)' }}
-                            >
-                                <svg className="w-6 h-6" fill="none" stroke="var(--text-tertiary)" strokeWidth="1.5" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                                </svg>
-                            </div>
-                            <span className="text-sm font-medium" style={{ color: 'var(--text-tertiary)' }}>
-                                새 프로젝트
-                            </span>
                         </div>
                     </div>
-                )}
-            </main>
+                </div>
+                ))}
+                
+                {/* New Project Placeholder */}
+                <button className="border-2 border-dashed border-gray-300 dark:border-gray-700 hover:border-blue-400 dark:hover:border-blue-500 rounded-[2rem] p-6 flex flex-col items-center justify-center gap-4 text-gray-400 hover:text-blue-500 hover:bg-blue-50/50 dark:hover:bg-blue-900/10 transition-all h-full min-h-[220px] group">
+                <div className="p-4 bg-gray-100 dark:bg-gray-800 rounded-full group-hover:scale-110 transition-transform">
+                    <Plus size={28} />
+                </div>
+                <span className="font-semibold">새 프로젝트 만들기</span>
+                </button>
+            </div>
+            )}
         </div>
-    );
-}
+      </main>
+    </div>
+  );
+};
