@@ -1,4 +1,3 @@
-
 import type {
   User,
   Member,
@@ -8,7 +7,7 @@ import type {
   Connection,
   Task,
   EditingCard,
-} from '../../types';
+} from '@/types';
 
 // ============================================
 // 인증 관련 목업 데이터
@@ -193,11 +192,11 @@ export const MOCK_NODES: Node[] = [
 ];
 
 export const MOCK_CONNECTIONS: Connection[] = [
-  { id: 'c1', from: 1, to: 2 },
-  { id: 'c2', from: 1, to: 3 },
-  { id: 'c3', from: 2, to: 4 },
-  { id: 'c4', from: 3, to: 4 },
-  { id: 'c5', from: 4, to: 5 },
+  { from: 1, to: 2 },
+  { from: 1, to: 3 },
+  { from: 2, to: 4 },
+  { from: 3, to: 4 },
+  { from: 4, to: 5 },
 ];
 
 // ============================================
@@ -205,8 +204,8 @@ export const MOCK_CONNECTIONS: Connection[] = [
 // ============================================
 
 export const MOCK_TODAY_TASKS: Task[] = [
-  { id: '1', title: 'UI 디자인 완료', project: 'Domo 협업 플랫폼', dueTime: '오후 6시', status: 'todo' },
-  { id: '2', title: 'API 연동 테스트', project: 'Domo 협업 플랫폼', dueTime: '오후 11시', status: 'todo' },
+  { id: 1, title: 'UI 디자인 완료', project: 'Domo 협업 플랫폼', dueTime: '오후 6시' },
+  { id: 2, title: 'API 연동 테스트', project: 'Domo 협업 플랫폼', dueTime: '오후 11시' },
 ];
 
 export const MOCK_EDITING_CARDS: EditingCard[] = [

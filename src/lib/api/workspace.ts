@@ -1,5 +1,4 @@
-
-import type { Workspace, Project, User } from '../../types';
+import type { Workspace, Project, User } from '@/types';
 import { API_CONFIG, apiFetch, mockDelay } from './config';
 import { MOCK_WORKSPACES, MOCK_PROJECTS, MOCK_ONLINE_MEMBERS } from './mock-data';
 

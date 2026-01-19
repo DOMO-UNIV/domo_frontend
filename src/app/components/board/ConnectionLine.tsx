@@ -1,8 +1,7 @@
-
 "use client";
 
 import React from 'react';
-import type { Node, Connection } from '../../../types/index';
+import type { Node, Connection } from '@/types';
 
 interface ConnectionLinesProps {
   connections: Connection[];
@@ -12,7 +11,6 @@ interface ConnectionLinesProps {
   connectFrom: number | null;
 }
 
-// 베지어 곡선 경로 계산
 function getConnectionPath(from: Node, to: Node): string {
   const startX = from.x + 220;
   const startY = from.y + 50;
@@ -35,6 +33,14 @@ export function ConnectionLines({
       className="absolute inset-0 pointer-events-none"
       style={{ width: '100%', height: '100%', minWidth: '2000px', minHeight: '1000px' }}
     >
+      <defs>
+        <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor={isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'} />
+          <stop offset="50%" stopColor={isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)'} />
+          <stop offset="100%" stopColor={isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'} />
+        </linearGradient>
+      </defs>
+
       {/* 기존 연결선들 */}
       {connections.map((conn, idx) => {
         const fromNode = nodes.find(n => n.id === conn.from);
@@ -46,7 +52,7 @@ export function ConnectionLines({
             key={idx}
             d={getConnectionPath(fromNode, toNode)}
             fill="none"
-            stroke={isDark ? '#6e6e80' : '#acacbe'}
+            stroke="url(#lineGradient)"
             strokeWidth="2"
             strokeLinecap="round"
           />
@@ -55,13 +61,22 @@ export function ConnectionLines({
 
       {/* 연결 중일 때 시작점 표시 */}
       {isConnecting && connectFrom !== null && (
-        <circle
-          cx={(nodes.find(n => n.id === connectFrom)?.x ?? 0) + 220}
-          cy={(nodes.find(n => n.id === connectFrom)?.y ?? 0) + 50}
-          r="8"
-          fill="#3b82f6"
-          className="animate-pulse"
-        />
+        <>
+          <circle
+            cx={(nodes.find(n => n.id === connectFrom)?.x ?? 0) + 220}
+            cy={(nodes.find(n => n.id === connectFrom)?.y ?? 0) + 50}
+            r="6"
+            fill="var(--accent)"
+          />
+          <circle
+            cx={(nodes.find(n => n.id === connectFrom)?.x ?? 0) + 220}
+            cy={(nodes.find(n => n.id === connectFrom)?.y ?? 0) + 50}
+            r="10"
+            fill="var(--accent)"
+            opacity="0.3"
+            className="animate-ping"
+          />
+        </>
       )}
     </svg>
   );

@@ -1,82 +1,11 @@
+// ============================================
+// 사용자 관련 타입
+// ============================================
 
-import { Modality } from "@google/genai";
-
-export interface Comment {
-  id: string;
-  user: string;
-  text: string;
-  timestamp: string;
-}
-
-export interface Tag {
-  id: string;
-  name: string;
-  color: string;
-}
-
-export interface TaskFile {
-  name: string;
-  url: string;
-  size: number;
-  type: string;
-}
-
-export interface Task {
-  id: string;
-  title: string;
-  status: 'inbox' | 'todo' | 'doing' | 'done';
-  time?: string;
-  color?: string;
-  tags?: Tag[];
-  description?: string;
-  comments?: Comment[];
-  files?: TaskFile[];
-  x?: number;
-  y?: number;
-  boardId?: string;
-  taskType?: number; // 0: Work, 1: Memo, 2: File/Folder
-  project?: string;
-  dueTime?: string;
-}
-
-export type ViewMode = 'dashboard' | 'inbox' | 'planner' | 'board' | 'calendar' | 'timeline' | 'profile' | 'settings';
-
-export interface Column {
-  id: string;
-  title: string;
-  status: Task['status'];
-}
-
-export interface Connection {
-  id: string;
-  from: string | number;
-  to: string | number;
-  shape?: 'bezier' | 'straight';
-  style?: 'solid' | 'dashed';
-  boardId?: string;
-}
-
-export interface Group {
-    id: string;
-    title: string;
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-    boardId?: string;
-}
-
-export interface Board {
-    id: string;
-    title: string;
-}
-
-// Auth & Workspace Types
 export interface User {
   id: number;
-  email: string;
   name: string;
-  is_student_verified?: boolean;
+  email: string;
 }
 
 export interface AuthUser {
@@ -84,14 +13,33 @@ export interface AuthUser {
   name: string;
 }
 
-export interface Member {
-  id: number;
-  name: string;
-  email: string;
+export interface Member extends User {
   isOnline: boolean;
   role: string;
   avatar?: string | null;
 }
+
+export interface Assignee {
+  id: number;
+  name: string;
+  avatar: string | null;
+}
+
+// ============================================
+// 워크스페이스 관련 타입
+// ============================================
+
+export interface Workspace {
+  id: number;
+  name: string;
+  description?: string;
+  owner_id: number;
+  projects: Project[];
+}
+
+// ============================================
+// 프로젝트 관련 타입
+// ============================================
 
 export interface Project {
   id: number;
@@ -104,33 +52,81 @@ export interface Project {
   color: string;
 }
 
-export interface Workspace {
+export interface ProjectSummary {
   id: number;
   name: string;
-  description: string;
-  owner_id: number;
-  projects: Project[];
+  progress: number;
+  memberCount: number;
+  lastActivity: string;
 }
+
+// ============================================
+// 보드/노드 관련 타입
+// ============================================
+
+export type NodeStatus = 'todo' | 'in-progress' | 'done';
 
 export interface Node {
   id: number;
   title: string;
-  status: 'todo' | 'in-progress' | 'done';
+  status: NodeStatus;
   x: number;
   y: number;
   assignees: Assignee[];
 }
 
-export interface Assignee {
+export interface Connection {
+  from: number;
+  to: number;
+}
+
+// ============================================
+// 작업/태스크 관련 타입
+// ============================================
+
+export interface Task {
   id: number;
-  name: string;
-  avatar: string | null;
+  title: string;
+  project: string;
+  dueTime: string;
 }
 
 export interface EditingCard {
   id: number;
   title: string;
   user: string;
+}
+
+// ============================================
+// 파일 관련 타입 (향후 사용)
+// ============================================
+
+export interface FileItem {
+  id: number;
+  name: string;
+  size: number;
+  type: string;
+  uploadedAt: string;
+  uploadedBy: User;
+  versions?: FileVersion[];
+}
+
+export interface FileVersion {
+  id: number;
+  version: number;
+  uploadedAt: string;
+  uploadedBy: User;
+  size: number;
+}
+
+// ============================================
+// API 응답 타입
+// ============================================
+
+export interface ApiResponse<T> {
+  data?: T;
+  message?: string;
+  error?: string;
 }
 
 export interface LoginResponse {
@@ -147,56 +143,4 @@ export interface SignupResponse {
 
 export interface VerifyResponse {
   message: string;
-}
-
-// Gemini Types
-export enum AppMode {
-  Chat = 'chat',
-  Vision = 'vision',
-  Live = 'live',
-  Create = 'create'
-}
-
-export interface Message {
-  id: string;
-  role: 'user' | 'model';
-  text: string;
-  timestamp: number;
-  isLoading?: boolean;
-  groundingSources?: Array<{
-    title?: string;
-    uri?: string;
-  }>;
-  images?: string[];
-}
-
-export interface VideoGenerationStatus {
-  isGenerating: boolean;
-  progressMessage?: string;
-  videoUri?: string;
-  error?: string;
-}
-
-export type LiveConfig = {
-  model: string;
-  responseModalities: [Modality];
-  speechConfig: {
-    voiceConfig: {
-      prebuiltVoiceConfig: {
-        voiceName: string;
-      }
-    }
-  };
-  systemInstruction?: string;
-};
-
-declare global {
-  interface AIStudio {
-    hasSelectedApiKey: () => Promise<boolean>;
-    openSelectKey: () => Promise<void>;
-  }
-
-  interface Window {
-    webkitAudioContext: typeof AudioContext;
-  }
 }

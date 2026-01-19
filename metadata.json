@@ -1,8 +1,0 @@
-{
-  "name": "DOMO Workspace",
-  "description": "A minimal, dark-mode productivity workspace featuring Inbox, Planner, and Kanban boards. Powered by Gemini.",
-  "requestFramePermissions": [
-    "microphone",
-    "camera"
-  ]
-}

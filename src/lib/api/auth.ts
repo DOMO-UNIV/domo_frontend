@@ -1,5 +1,4 @@
-
-import type { AuthUser, LoginResponse, SignupResponse, VerifyResponse } from '../../types';
+import type { AuthUser, LoginResponse, SignupResponse, VerifyResponse } from '@/types';
 import { API_CONFIG, apiFetch, mockDelay } from './config';
 import { MOCK_USERS } from './mock-data';
 
