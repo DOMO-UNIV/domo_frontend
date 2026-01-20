@@ -7,14 +7,13 @@ import { CalendarView, TimelineView, SettingsView } from './Views';
 import { TaskDetailModal } from '../ui/TaskDetailModal';
 import { Mascot } from '../ui/Mascot';
 
-// API 함수들 import
 import {
     getTasks,
     getConnections,
     createTask,
     updateTask,
     createConnection,
-    deleteConnection,
+    deleteConnection
 } from '@/src/lib/api';
 
 import {
@@ -28,13 +27,8 @@ interface WorkspaceBoardProps {
 }
 
 export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack }) => {
-    // 데이터 상태
     const [tasks, setTasks] = useState<Task[]>([]);
     const [connections, setConnections] = useState<Connection[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-
-    // UI 상태
     const [boards, setBoards] = useState<Board[]>([{ id: 1, title: '메인 보드' }]);
     const [activeBoardId, setActiveBoardId] = useState<number>(1);
     const [groups, setGroups] = useState<Group[]>([]);
@@ -43,62 +37,70 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
     const [snapToGrid, setSnapToGrid] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(true);
 
-    // 프로젝트 데이터 로딩
+    // 로딩 & 에러 상태
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+
+    // 프로젝트 데이터 로드
     useEffect(() => {
         const loadProjectData = async () => {
             setIsLoading(true);
             setError(null);
 
             try {
-                // 태스크와 연결선 동시 로딩
                 const [tasksData, connectionsData] = await Promise.all([
                     getTasks(project.id),
                     getConnections(project.id),
                 ]);
 
-                // boardId가 없는 태스크에 기본값 설정
-                const tasksWithBoard = tasksData.map(t => ({
-                    ...t,
-                    boardId: t.boardId || activeBoardId,
-                }));
-
-                setTasks(tasksWithBoard);
+                setTasks(tasksData);
                 setConnections(connectionsData);
             } catch (err) {
                 console.error('Failed to load project data:', err);
-                setError(err instanceof Error ? err.message : '데이터를 불러오는데 실패했습니다.');
+                setError('프로젝트 데이터를 불러오는데 실패했습니다.');
             } finally {
                 setIsLoading(false);
             }
         };
 
         loadProjectData();
-    }, [project.id, activeBoardId]);
+    }, [project.id]);
 
-    // 보드별 태스크 업데이트 (로컬 상태 + API 호출)
-    const handleBoardTasksUpdate = async (boardTasks: Task[]) => {
-        // 먼저 로컬 상태 업데이트 (빠른 UI 반응)
+    const handleBoardTasksUpdate = (boardTasks: Task[]) => {
         setTasks(prev => {
             const other = prev.filter(t => t.boardId !== activeBoardId);
             return [...other, ...boardTasks];
         });
-
-        // 변경된 태스크들 API 호출 (위치 변경 등)
-        // 참고: 실제로는 변경된 것만 추적해서 호출하는 게 좋음
-        // 여기서는 간단하게 처리
     };
 
-    // 태스크 생성
-    const handleTaskCreate = async (taskData: Partial<Task>): Promise<Task> => {
+    // 태스크 생성 핸들러
+    const handleTaskCreate = async (taskData: Partial<Task>) => {
+        const columnId = taskData.column_id || 1;
+
+        // 필수 필드들을 명시적으로 설정
+        const newTaskData: Omit<Task, 'id'> = {
+            title: taskData.title || '새로운 카드',
+            status: taskData.status || 'todo',
+            x: taskData.x ?? 100,
+            y: taskData.y ?? 100,
+            boardId: activeBoardId,
+            description: taskData.description,
+            content: taskData.content,
+            column_id: columnId,
+            taskType: taskData.taskType,
+            card_type: taskData.card_type,
+            time: taskData.time,
+            start_date: taskData.start_date,
+            due_date: taskData.due_date,
+            color: taskData.color,
+            tags: taskData.tags || [],
+            comments: taskData.comments || [],
+            files: taskData.files || [],
+            assignees: taskData.assignees || [],
+        };
+
         try {
-            // 기본 컬럼 ID (실제로는 프로젝트의 첫 번째 컬럼 ID를 가져와야 함)
-            const columnId = taskData.column_id || 1;
-
-            const newTask = await createTask(columnId, {
-                ...taskData,
-                boardId: activeBoardId,
-            });
-
+            const newTask = await createTask(columnId, newTaskData);
             setTasks(prev => [...prev, newTask]);
             return newTask;
         } catch (err) {
@@ -107,60 +109,68 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
         }
     };
 
-    // 태스크 업데이트
-    const handleTaskUpdate = async (updatedTask: Task) => {
-        try {
-            // 로컬 상태 먼저 업데이트 (낙관적 업데이트)
-            setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t));
-            setSelectedTask(updatedTask);
+    // 태스크 업데이트 핸들러
+    const handleTaskUpdate = async (taskId: number, updates: Partial<Task>) => {
+        // 낙관적 업데이트
+        const previousTasks = [...tasks];
+        setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...updates } : t));
 
-            // API 호출
-            await updateTask(updatedTask.id, updatedTask);
+        try {
+            await updateTask(taskId, updates);
         } catch (err) {
             console.error('Failed to update task:', err);
-            // 실패 시 롤백 로직 필요 (선택사항)
+            // 롤백
+            setTasks(previousTasks);
+            throw err;
         }
     };
 
-    // 연결선 생성
+    // 연결선 생성 핸들러
     const handleConnectionCreate = async (from: number, to: number) => {
-        try {
-            const newConnection = await createConnection(project.id, {
-                from,
-                to,
-                boardId: activeBoardId,
-                style: 'solid',
-                shape: 'bezier',
-            });
+        const newConnection: Omit<Connection, 'id'> = {
+            from,
+            to,
+            boardId: activeBoardId,
+            style: 'solid',
+            shape: 'bezier'
+        };
 
-            setConnections(prev => [...prev, newConnection]);
+        // 낙관적 업데이트
+        const tempId = Date.now();
+        setConnections(prev => [...prev, { ...newConnection, id: tempId }]);
+
+        try {
+            const savedConnection = await createConnection(project.id, newConnection);
+            setConnections(prev =>
+                prev.map(c => c.id === tempId ? savedConnection : c)
+            );
         } catch (err) {
             console.error('Failed to create connection:', err);
+            // 롤백
+            setConnections(prev => prev.filter(c => c.id !== tempId));
         }
     };
 
-    // 연결선 삭제
-    const handleConnectionDelete = async (id: number) => {
+    // 연결선 삭제 핸들러
+    const handleConnectionDelete = async (connectionId: number) => {
+        const previousConnections = [...connections];
+        setConnections(prev => prev.filter(c => c.id !== connectionId));
+
         try {
-            await deleteConnection(project.id, id);
-            setConnections(prev => prev.filter(c => c.id !== id));
+            await deleteConnection(project.id, connectionId);
         } catch (err) {
             console.error('Failed to delete connection:', err);
+            setConnections(previousConnections);
         }
-    };
-
-    // 연결선 업데이트 (로컬만 - 백엔드에 API 없음)
-    const handleConnectionUpdate = (id: number, updates: Partial<Connection>) => {
-        setConnections(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
     };
 
     // 로딩 화면
     if (isLoading) {
         return (
             <div className="flex h-screen items-center justify-center bg-gray-50 dark:bg-black">
-                <div className="text-center">
-                    <Loader2 className="animate-spin text-blue-500 mx-auto mb-4" size={48} />
-                    <p className="text-gray-500 dark:text-gray-400">프로젝트를 불러오는 중...</p>
+                <div className="flex flex-col items-center gap-4">
+                    <Loader2 className="w-10 h-10 animate-spin text-blue-500" />
+                    <p className="text-gray-500 dark:text-gray-400">프로젝트 로딩 중...</p>
                 </div>
             </div>
         );
@@ -170,13 +180,13 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
     if (error) {
         return (
             <div className="flex h-screen items-center justify-center bg-gray-50 dark:bg-black">
-                <div className="text-center">
-                    <p className="text-red-500 mb-4">{error}</p>
+                <div className="flex flex-col items-center gap-4 text-center">
+                    <p className="text-red-500">{error}</p>
                     <button
-                        onClick={onBack}
+                        onClick={() => window.location.reload()}
                         className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
                     >
-                        돌아가기
+                        다시 시도
                     </button>
                 </div>
             </div>
@@ -262,9 +272,11 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
                             connections={connections.filter(c => c.boardId === activeBoardId)}
                             onTasksUpdate={handleBoardTasksUpdate}
                             onTaskSelect={setSelectedTask}
+                            onTaskCreate={handleTaskCreate}
+                            onTaskUpdate={handleTaskUpdate}
                             onConnectionCreate={handleConnectionCreate}
                             onConnectionDelete={handleConnectionDelete}
-                            onConnectionUpdate={handleConnectionUpdate}
+                            onConnectionUpdate={(id, updates) => setConnections(connections.map(c => c.id === id ? { ...c, ...updates } : c))}
                             boards={boards}
                             activeBoardId={activeBoardId}
                             onSwitchBoard={setActiveBoardId}
@@ -296,7 +308,10 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
                 <TaskDetailModal
                     task={selectedTask}
                     onClose={() => setSelectedTask(null)}
-                    onUpdate={handleTaskUpdate}
+                    onUpdate={(updated) => {
+                        setTasks(prev => prev.map(t => t.id === updated.id ? updated : t));
+                        setSelectedTask(updated);
+                    }}
                     currentUser="User"
                 />
             )}
