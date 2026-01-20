@@ -1,18 +1,24 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Project, Task, Connection, Board, Group, ViewMode } from '@/src/types'; // 타입 경로는 프로젝트 설정에 따름 (에러나면 ../../types 로 수정)
+import React, { useState, useEffect } from 'react';
+import { Project, Task, Connection, Board, Group, ViewMode } from '@/src/types';
 import { BoardCanvas } from './BoardCanvas';
 import { CalendarView, TimelineView, SettingsView } from './Views';
 import { TaskDetailModal } from '../ui/TaskDetailModal';
 import { Mascot } from '../ui/Mascot';
 
-// [수정] 상대 경로로 API 데이터와 유틸리티 불러오기
-import { MOCK_NODES, MOCK_CONNECTIONS } from '@/src/lib/api';
+import {
+    getTasks,
+    getConnections,
+    createTask,
+    updateTask,
+    createConnection,
+    deleteConnection
+} from '@/src/lib/api';
 
 import {
     Trello, Calendar as CalendarIcon, StretchHorizontal, Settings,
-    ChevronLeft, ChevronRight, ArrowLeft
+    ChevronLeft, ChevronRight, ArrowLeft, Loader2
 } from 'lucide-react';
 
 interface WorkspaceBoardProps {
@@ -21,19 +27,44 @@ interface WorkspaceBoardProps {
 }
 
 export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack }) => {
-    // [수정] 하드코딩 제거하고 MOCK_NODES 연동 (타입 호환을 위해 변환)
-    const [tasks, setTasks] = useState<Task[]>(MOCK_NODES as unknown as Task[]);
-
-    // [수정] MOCK_CONNECTIONS 연동
-    const [connections, setConnections] = useState<Connection[]>(MOCK_CONNECTIONS);
-
-    const [boards, setBoards] = useState<Board[]>([{ id: 'board-1', title: '메인 보드' }]);
-    const [activeBoardId, setActiveBoardId] = useState('board-1');
+    const [tasks, setTasks] = useState<Task[]>([]);
+    const [connections, setConnections] = useState<Connection[]>([]);
+    const [boards, setBoards] = useState<Board[]>([{ id: 1, title: '메인 보드' }]);
+    const [activeBoardId, setActiveBoardId] = useState<number>(1);
     const [groups, setGroups] = useState<Group[]>([]);
     const [viewMode, setViewMode] = useState<ViewMode>('board');
     const [selectedTask, setSelectedTask] = useState<Task | null>(null);
     const [snapToGrid, setSnapToGrid] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(true);
+
+    // 로딩 & 에러 상태
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+
+    // 프로젝트 데이터 로드
+    useEffect(() => {
+        const loadProjectData = async () => {
+            setIsLoading(true);
+            setError(null);
+
+            try {
+                const [tasksData, connectionsData] = await Promise.all([
+                    getTasks(project.id),
+                    getConnections(project.id),
+                ]);
+
+                setTasks(tasksData);
+                setConnections(connectionsData);
+            } catch (err) {
+                console.error('Failed to load project data:', err);
+                setError('프로젝트 데이터를 불러오는데 실패했습니다.');
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        loadProjectData();
+    }, [project.id]);
 
     const handleBoardTasksUpdate = (boardTasks: Task[]) => {
         setTasks(prev => {
@@ -41,6 +72,126 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
             return [...other, ...boardTasks];
         });
     };
+
+    // 태스크 생성 핸들러
+    const handleTaskCreate = async (taskData: Partial<Task>) => {
+        const columnId = taskData.column_id || 1;
+
+        // 필수 필드들을 명시적으로 설정
+        const newTaskData: Omit<Task, 'id'> = {
+            title: taskData.title || '새로운 카드',
+            status: taskData.status || 'todo',
+            x: taskData.x ?? 100,
+            y: taskData.y ?? 100,
+            boardId: activeBoardId,
+            description: taskData.description,
+            content: taskData.content,
+            column_id: columnId,
+            taskType: taskData.taskType,
+            card_type: taskData.card_type,
+            time: taskData.time,
+            start_date: taskData.start_date,
+            due_date: taskData.due_date,
+            color: taskData.color,
+            tags: taskData.tags || [],
+            comments: taskData.comments || [],
+            files: taskData.files || [],
+            assignees: taskData.assignees || [],
+        };
+
+        try {
+            const newTask = await createTask(columnId, newTaskData);
+            setTasks(prev => [...prev, newTask]);
+            return newTask;
+        } catch (err) {
+            console.error('Failed to create task:', err);
+            throw err;
+        }
+    };
+
+    // 태스크 업데이트 핸들러
+    const handleTaskUpdate = async (taskId: number, updates: Partial<Task>) => {
+        // 낙관적 업데이트
+        const previousTasks = [...tasks];
+        setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...updates } : t));
+
+        try {
+            await updateTask(taskId, updates);
+        } catch (err) {
+            console.error('Failed to update task:', err);
+            // 롤백
+            setTasks(previousTasks);
+            throw err;
+        }
+    };
+
+    // 연결선 생성 핸들러
+    const handleConnectionCreate = async (from: number, to: number) => {
+        const newConnection: Omit<Connection, 'id'> = {
+            from,
+            to,
+            boardId: activeBoardId,
+            style: 'solid',
+            shape: 'bezier'
+        };
+
+        // 낙관적 업데이트
+        const tempId = Date.now();
+        setConnections(prev => [...prev, { ...newConnection, id: tempId }]);
+
+        try {
+            const savedConnection = await createConnection(project.id, newConnection);
+            setConnections(prev =>
+                prev.map(c => c.id === tempId ? savedConnection : c)
+            );
+        } catch (err) {
+            console.error('Failed to create connection:', err);
+            // 롤백
+            setConnections(prev => prev.filter(c => c.id !== tempId));
+        }
+    };
+
+    // 연결선 삭제 핸들러
+    const handleConnectionDelete = async (connectionId: number) => {
+        const previousConnections = [...connections];
+        setConnections(prev => prev.filter(c => c.id !== connectionId));
+
+        try {
+            await deleteConnection(project.id, connectionId);
+        } catch (err) {
+            console.error('Failed to delete connection:', err);
+            setConnections(previousConnections);
+        }
+    };
+
+    // 로딩 화면
+    if (isLoading) {
+        return (
+            <div className="flex h-screen items-center justify-center bg-gray-50 dark:bg-black">
+                <div className="flex flex-col items-center gap-4">
+                    <Loader2 className="w-10 h-10 animate-spin text-blue-500" />
+                    <p className="text-gray-500 dark:text-gray-400">프로젝트 로딩 중...</p>
+                </div>
+            </div>
+        );
+    }
+
+    // 에러 화면
+    if (error) {
+        return (
+            <div className="flex h-screen items-center justify-center bg-gray-50 dark:bg-black">
+                <div className="flex flex-col items-center gap-4 text-center">
+                    <p className="text-red-500">{error}</p>
+                    <button
+                        onClick={() => window.location.reload()}
+                        className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+                    >
+                        다시 시도
+                    </button>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="flex h-screen bg-gray-50 dark:bg-black text-gray-900 dark:text-gray-100 font-sans overflow-hidden">
@@ -121,13 +272,19 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
                             connections={connections.filter(c => c.boardId === activeBoardId)}
                             onTasksUpdate={handleBoardTasksUpdate}
                             onTaskSelect={setSelectedTask}
-                            onConnectionCreate={(from, to) => setConnections([...connections, { id: Date.now().toString(), from, to, boardId: activeBoardId, style: 'solid', shape: 'bezier' }])}
-                            onConnectionDelete={(id) => setConnections(connections.filter(c => c.id !== id))}
+                            onTaskCreate={handleTaskCreate}
+                            onTaskUpdate={handleTaskUpdate}
+                            onConnectionCreate={handleConnectionCreate}
+                            onConnectionDelete={handleConnectionDelete}
                             onConnectionUpdate={(id, updates) => setConnections(connections.map(c => c.id === id ? { ...c, ...updates } : c))}
                             boards={boards}
                             activeBoardId={activeBoardId}
                             onSwitchBoard={setActiveBoardId}
-                            onAddBoard={(name) => { const newId = Date.now().toString(); setBoards([...boards, { id: newId, title: name }]); setActiveBoardId(newId); }}
+                            onAddBoard={(name) => {
+                                const newId = Date.now();
+                                setBoards([...boards, { id: newId, title: name }]);
+                                setActiveBoardId(newId);
+                            }}
                             onRenameBoard={(id, name) => setBoards(boards.map(b => b.id === id ? { ...b, title: name } : b))}
                             snapToGrid={snapToGrid}
                             groups={groups.filter(g => g.boardId === activeBoardId)}

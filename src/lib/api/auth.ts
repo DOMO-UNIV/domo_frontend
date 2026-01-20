@@ -1,5 +1,4 @@
-
-import type { AuthUser, LoginResponse, SignupResponse, VerifyResponse } from '../../types';
+import type { AuthUser, LoginResponse, SignupResponse, VerifyResponse, User } from '../../types';
 import { API_CONFIG, apiFetch, mockDelay } from './config';
 import { MOCK_USERS } from './mock-data';
 
@@ -26,10 +25,20 @@ export async function login(email: string, password: string): Promise<LoginRespo
     };
   }
 
-  return apiFetch<LoginResponse>('/auth/login', {
+  // 백엔드: POST /api/auth/login
+  // 응답: { message: string, user: { email, name } }
+  const response = await apiFetch<{ message: string; user: { email: string; name: string } }>('/auth/login', {
     method: 'POST',
     body: JSON.stringify({ email, password }),
   });
+
+  return {
+    message: response.message,
+    user: {
+      email: response.user.email,
+      name: response.user.name,
+    },
+  };
 }
 
 /**
@@ -56,10 +65,26 @@ export async function signup(
     };
   }
 
-  return apiFetch<SignupResponse>('/auth/signup', {
+  // 백엔드: POST /api/auth/signup
+  // 요청: { email, password, name }
+  // 응답: UserResponse { id, email, name, is_student_verified, profile_image }
+  const response = await apiFetch<{
+    id: number;
+    email: string;
+    name: string;
+    is_student_verified: boolean;
+    profile_image?: string;
+  }>('/auth/signup', {
     method: 'POST',
     body: JSON.stringify({ email, password, name }),
   });
+
+  return {
+    id: response.id,
+    email: response.email,
+    name: response.name,
+    is_student_verified: response.is_student_verified,
+  };
 }
 
 /**
@@ -74,6 +99,9 @@ export async function verify(email: string, code: string): Promise<VerifyRespons
     throw new Error('인증 코드가 일치하지 않거나 만료되었습니다.');
   }
 
+  // 백엔드: POST /api/auth/verify
+  // 요청: { email, code }
+  // 응답: { message: string }
   return apiFetch<VerifyResponse>('/auth/verify', {
     method: 'POST',
     body: JSON.stringify({ email, code }),
@@ -89,6 +117,7 @@ export async function logout(): Promise<{ message: string }> {
     return { message: '로그아웃 되었습니다.' };
   }
 
+  // 백엔드: POST /api/auth/logout
   return apiFetch<{ message: string }>('/auth/logout', {
     method: 'POST',
   });
@@ -97,15 +126,29 @@ export async function logout(): Promise<{ message: string }> {
 /**
  * 현재 사용자 정보 조회
  */
-export async function getCurrentUser(): Promise<AuthUser | null> {
+export async function getCurrentUser(): Promise<User | null> {
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(200);
-    // 목업에서는 로그인 상태 유지 안함
     return null;
   }
 
   try {
-    return await apiFetch<AuthUser>('/auth/me');
+    // 백엔드: GET /api/users/me
+    const response = await apiFetch<{
+      id: number;
+      email: string;
+      name: string;
+      is_student_verified: boolean;
+      profile_image?: string;
+    }>('/users/me');
+
+    return {
+      id: response.id,
+      email: response.email,
+      name: response.name,
+      is_student_verified: response.is_student_verified,
+      profile_image: response.profile_image,
+    };
   } catch {
     return null;
   }

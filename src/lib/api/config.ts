@@ -3,8 +3,8 @@
 // ============================================
 
 export const API_CONFIG = {
-  BASE_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api',
-  USE_MOCK: process.env.NEXT_PUBLIC_USE_MOCK !== 'false', // 기본값 true
+  BASE_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000/api',
+  USE_MOCK: process.env.NEXT_PUBLIC_USE_MOCK !== 'false',
 } as const;
 
 // ============================================
@@ -31,7 +31,7 @@ export async function apiFetch<T>(
     const response = await fetch(`${API_CONFIG.BASE_URL}${endpoint}`, {
       ...fetchOptions,
       signal: controller.signal,
-      credentials: 'include',
+      credentials: 'include', // 쿠키 포함 (세션 인증용)
       headers: {
         'Content-Type': 'application/json',
         ...fetchOptions.headers,
@@ -43,10 +43,54 @@ export async function apiFetch<T>(
       throw new Error(errorData.detail || `HTTP ${response.status} 에러`);
     }
 
+    // 204 No Content 처리
+    if (response.status === 204) {
+      return {} as T;
+    }
+
     return response.json();
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
       throw new Error('요청 시간이 초과되었습니다.');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+/**
+ * 파일 업로드용 fetch (multipart/form-data)
+ */
+export async function apiUpload<T>(
+  endpoint: string,
+  formData: FormData,
+  options: Omit<FetchOptions, 'body'> = {}
+): Promise<T> {
+  const { timeout = 30000, ...fetchOptions } = options;
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+  try {
+    const response = await fetch(`${API_CONFIG.BASE_URL}${endpoint}`, {
+      method: 'POST',
+      ...fetchOptions,
+      signal: controller.signal,
+      credentials: 'include',
+      body: formData,
+      // Content-Type 헤더를 설정하지 않음 (브라우저가 자동으로 boundary 설정)
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.detail || `HTTP ${response.status} 에러`);
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('업로드 시간이 초과되었습니다.');
     }
     throw error;
   } finally {

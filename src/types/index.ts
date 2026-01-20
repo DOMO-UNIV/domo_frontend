@@ -5,10 +5,11 @@
 // ============================================
 
 export interface User {
-  id: number | string;
+  id: number;
   email: string;
   name: string;
   is_student_verified?: boolean;
+  profile_image?: string | null;
 }
 
 export interface AuthUser {
@@ -17,7 +18,7 @@ export interface AuthUser {
 }
 
 export interface Member {
-  id: number | string;
+  id: number;
   name: string;
   email: string;
   isOnline: boolean;
@@ -26,7 +27,7 @@ export interface Member {
 }
 
 export interface Assignee {
-  id: number | string;
+  id: number;
   name: string;
   avatar: string | null;
 }
@@ -36,9 +37,10 @@ export interface Assignee {
 // ============================================
 
 export interface Project {
-  id: number | string;
+  id: number;
   name: string;
   workspace: string;
+  workspace_id?: number;
   role: string;
   progress: number;
   memberCount: number;
@@ -56,10 +58,10 @@ export interface ProjectSummary {
 }
 
 export interface Workspace {
-  id: number | string;
+  id: number;
   name: string;
   description: string;
-  owner_id: number | string;
+  owner_id: number;
   projects: Project[];
 }
 
@@ -70,115 +72,131 @@ export interface Workspace {
 export type ViewMode = 'dashboard' | 'inbox' | 'planner' | 'board' | 'calendar' | 'timeline' | 'profile' | 'settings';
 
 export interface Tag {
-  id: string;
+  id: number;
   name: string;
   color: string;
 }
 
 export interface Comment {
-  id: string;
+  id: number;
   user: string;
+  user_id?: number;
   text: string;
   timestamp: string;
 }
 
 export interface TaskFile {
+  id?: number;
   name: string;
   url: string;
   size: number;
   type: string;
 }
 
+// Task는 프론트엔드 캔버스용 (백엔드 Card와 매핑)
 export interface Task {
-  id: string | number;
+  id: number;
   title: string;
-  status: 'inbox' | 'todo' | 'doing' | 'in-progress' | 'done' | string;
+  status: 'inbox' | 'todo' | 'doing' | 'in-progress' | 'done';
+  content?: string;
+  description?: string;
+
+  // 캔버스 위치
+  x: number;
+  y: number;
+
+  // 분류
+  boardId: number;
+  column_id?: number;
+  taskType?: number;
+  card_type?: string;
+
+  // 시간
   time?: string;
+  start_date?: string;
+  due_date?: string;
+
+  // 관계
   color?: string;
   tags?: Tag[];
-  description?: string;
   comments?: Comment[];
   files?: TaskFile[];
-  x?: number;
-  y?: number;
-  boardId?: string;
-  taskType?: number;
-  project?: string;
-  dueTime?: string;
-  assignee?: User | Assignee;
   assignees?: Assignee[];
-  priority?: 'low' | 'medium' | 'high';
-  dueDate?: string;
+
+  // 메타
+  created_at?: string;
+  updated_at?: string;
 }
 
+// Node는 API 응답용 (mock-data에서 사용)
 export interface Node {
-  id: number | string;
+  id: number;
   title: string;
-  status: 'todo' | 'in-progress' | 'done' | string;
+  status: 'todo' | 'in-progress' | 'done';
   x: number;
   y: number;
   assignees: Assignee[];
-  boardId?: string;
+  boardId?: number;
   description?: string;
-  project?: string;
 }
 
 export interface Column {
-  id: string;
+  id: number;
   title: string;
   status: Task['status'];
+  order: number;
+  project_id: number;
 }
 
 export interface Connection {
-  id: string;
-  from: string | number;
-  to: string | number;
+  id: number;
+  from: number;
+  to: number;
   shape?: 'bezier' | 'straight';
   style?: 'solid' | 'dashed';
-  boardId?: string;
+  boardId?: number;
 }
 
 export interface Group {
-  id: string;
+  id: number;
   title: string;
   x: number;
   y: number;
   width: number;
   height: number;
-  boardId?: string;
+  boardId?: number;
 }
 
 export interface Board {
-  id: string;
+  id: number;
   title: string;
 }
 
 export interface EditingCard {
-  id: number | string;
+  id: number;
   title: string;
   user: string;
 }
 
 // ============================================
-// 4. 파일 관련 (기존 코드 보존)
+// 4. 파일 관련
 // ============================================
-
-export interface FileItem {
-  id: number;
-  name: string;
-  size: number;
-  type: string;
-  uploadedAt: string;
-  uploadedBy: User;
-  versions?: FileVersion[];
-}
 
 export interface FileVersion {
   id: number;
   version: number;
-  uploadedAt: string;
-  uploadedBy: User;
-  size: number;
+  file_size: number;
+  created_at: string;
+  uploader_id: number;
+}
+
+export interface FileMetadata {
+  id: number;
+  project_id: number;
+  filename: string;
+  owner_id: number;
+  created_at: string;
+  latest_version?: FileVersion;
 }
 
 // ============================================
@@ -205,6 +223,36 @@ export interface SignupResponse {
 
 export interface VerifyResponse {
   message: string;
+}
+
+// ============================================
+// 6. 백엔드 API 스키마와 매칭되는 타입
+// ============================================
+
+// 백엔드 CardResponse와 1:1 매칭
+export interface CardResponse {
+  id: number;
+  title: string;
+  content: string | null;
+  order: number;
+  column_id: number;
+  card_type: string;
+  x: number;
+  y: number;
+  created_at: string;
+  updated_at: string;
+  assignees: User[];
+  files: FileMetadata[];
+  start_date: string | null;
+  due_date: string | null;
+}
+
+// 백엔드 BoardColumnResponse
+export interface BoardColumnResponse {
+  id: number;
+  title: string;
+  order: number;
+  project_id: number;
 }
 
 // ============================================
