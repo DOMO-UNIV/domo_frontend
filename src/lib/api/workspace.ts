@@ -27,21 +27,21 @@ export async function getWorkspaces(): Promise<Workspace[]> {
 
   // 각 워크스페이스의 프로젝트 목록도 가져오기
   const workspaces: Workspace[] = await Promise.all(
-    response.map(async (ws) => {
-      let projects: Project[] = [];
-      try {
-        projects = await getProjects(ws.id);
-      } catch {
-        // 프로젝트 조회 실패 시 빈 배열
-      }
-      return {
-        id: ws.id,
-        name: ws.name,
-        description: ws.description || '',
-        owner_id: ws.owner_id,
-        projects,
-      };
-    })
+      response.map(async (ws) => {
+        let projects: Project[] = [];
+        try {
+          projects = await getProjects(ws.id);
+        } catch {
+          // 프로젝트 조회 실패 시 빈 배열
+        }
+        return {
+          id: ws.id,
+          name: ws.name,
+          description: ws.description || '',
+          owner_id: ws.owner_id,
+          projects,
+        };
+      })
   );
 
   return workspaces;
@@ -119,8 +119,8 @@ export async function createWorkspace(name: string, description?: string): Promi
  * 워크스페이스 수정
  */
 export async function updateWorkspace(
-  workspaceId: number,
-  data: { name?: string; description?: string }
+    workspaceId: number,
+    data: { name?: string; description?: string }
 ): Promise<Workspace> {
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(200);
@@ -260,21 +260,21 @@ export async function getProject(projectId: number): Promise<Project> {
   // 모든 프로젝트에서 찾기
   const allProjects = await getMyProjects();
   const project = allProjects.find(p => p.id === projectId);
-  
+
   if (!project) {
     throw new Error('프로젝트를 찾을 수 없습니다.');
   }
-  
+
   return project;
 }
 
 /**
- * 프로젝트 생성
+ * 프로젝트 생성 (기본 컬럼 3개 자동 생성)
  */
 export async function createProject(
-  workspaceId: number,
-  name: string,
-  description?: string
+    workspaceId: number,
+    name: string,
+    description?: string
 ): Promise<Project> {
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(300);
@@ -303,6 +303,27 @@ export async function createProject(
     body: JSON.stringify({ name, description }),
   });
 
+  // ✅ 프로젝트 생성 후 기본 컬럼 3개 생성
+  const defaultColumns = [
+    { title: '할 일', order: 0 },
+    { title: '진행 중', order: 1 },
+    { title: '완료', order: 2 },
+  ];
+
+  try {
+    await Promise.all(
+        defaultColumns.map(col =>
+            apiFetch(`/projects/${response.id}/columns`, {
+              method: 'POST',
+              body: JSON.stringify(col),
+            })
+        )
+    );
+    console.log('✅ 기본 컬럼 3개 생성 완료');
+  } catch (err) {
+    console.warn('⚠️ 기본 컬럼 생성 실패 (이미 존재할 수 있음):', err);
+  }
+
   // 워크스페이스 이름 조회
   let workspaceName = '워크스페이스';
   try {
@@ -317,8 +338,8 @@ export async function createProject(
  * 프로젝트 수정
  */
 export async function updateProject(
-  projectId: number,
-  data: { name?: string; description?: string }
+    projectId: number,
+    data: { name?: string; description?: string }
 ): Promise<Project> {
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(200);
@@ -412,8 +433,8 @@ export async function getOnlineMembers(workspaceId: number): Promise<User[]> {
  * 워크스페이스에 멤버 추가 (이메일로)
  */
 export async function addWorkspaceMember(
-  workspaceId: number,
-  email: string
+    workspaceId: number,
+    email: string
 ): Promise<{ message: string }> {
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(300);
@@ -431,8 +452,8 @@ export async function addWorkspaceMember(
  * 워크스페이스 멤버 삭제
  */
 export async function removeWorkspaceMember(
-  workspaceId: number,
-  userId: number
+    workspaceId: number,
+    userId: number
 ): Promise<{ message: string }> {
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(200);
@@ -449,9 +470,9 @@ export async function removeWorkspaceMember(
  * 초대 링크 생성
  */
 export async function createInvitation(
-  workspaceId: number,
-  role: string = 'member',
-  expiresInHours: number = 24
+    workspaceId: number,
+    role: string = 'member',
+    expiresInHours: number = 24
 ): Promise<{ invite_link: string; expires_at: string }> {
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(300);
@@ -463,11 +484,11 @@ export async function createInvitation(
 
   // 백엔드: POST /api/workspaces/{id}/invitations
   return apiFetch<{ invite_link: string; expires_at: string }>(
-    `/workspaces/${workspaceId}/invitations`,
-    {
-      method: 'POST',
-      body: JSON.stringify({ role, expires_in_hours: expiresInHours }),
-    }
+      `/workspaces/${workspaceId}/invitations`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ role, expires_in_hours: expiresInHours }),
+      }
   );
 }
 

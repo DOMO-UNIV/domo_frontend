@@ -35,7 +35,7 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
     // 데이터 상태
     const [tasks, setTasks] = useState<Task[]>([]);
     const [connections, setConnections] = useState<Connection[]>([]);
-    const [columns, setColumns] = useState<Column[]>([]); // ✅ 컬럼 상태 추가
+    const [columns, setColumns] = useState<Column[]>([]);
     const [boards, setBoards] = useState<Board[]>([{ id: 1, title: '메인 보드' }]);
     const [activeBoardId, setActiveBoardId] = useState<number>(1);
     const [groups, setGroups] = useState<Group[]>([]);
@@ -64,7 +64,6 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
         setError(null);
 
         try {
-            // ✅ 컬럼도 함께 로딩
             const [tasksData, connectionsData, columnsData] = await Promise.all([
                 getTasks(project.id),
                 getConnections(project.id),
@@ -91,6 +90,56 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
     }, [loadProjectData]);
 
     // =========================================
+    // 기본 컬럼 ID 가져오기 (첫 번째 컬럼 = "할 일")
+    // =========================================
+    const getDefaultColumnId = useCallback((): number | null => {
+        if (columns.length === 0) return null;
+
+        // "할 일" 컬럼 우선 찾기
+        const todoColumn = columns.find(col =>
+            col.title.includes('할 일') ||
+            col.status === 'todo' ||
+            col.order === 0
+        );
+
+        return todoColumn?.id || columns[0].id;
+    }, [columns]);
+
+    // =========================================
+    // 컬럼 ID로 컬럼 정보 가져오기
+    // =========================================
+    const getColumnById = useCallback((columnId: number): Column | undefined => {
+        return columns.find(col => col.id === columnId);
+    }, [columns]);
+
+    // =========================================
+    // X 좌표로 해당 컬럼 찾기 (드롭 영역 기반)
+    // =========================================
+    const getColumnByXPosition = useCallback((x: number): Column | null => {
+        if (columns.length === 0) return null;
+
+        // 컬럼을 order 순으로 정렬
+        const sortedColumns = [...columns].sort((a, b) => a.order - b.order);
+
+        // 보드 너비를 기준으로 컬럼 영역 계산 (예: 3개 컬럼이면 각 1/3 영역)
+        const columnWidth = 400; // 각 컬럼의 대략적인 너비
+        const columnGap = 50;    // 컬럼 간 간격
+
+        for (let i = 0; i < sortedColumns.length; i++) {
+            const columnStartX = i * (columnWidth + columnGap);
+            const columnEndX = columnStartX + columnWidth;
+
+            if (x >= columnStartX && x < columnEndX) {
+                return sortedColumns[i];
+            }
+        }
+
+        // 범위를 벗어난 경우 가장 가까운 컬럼 반환
+        if (x < 0) return sortedColumns[0];
+        return sortedColumns[sortedColumns.length - 1];
+    }, [columns]);
+
+    // =========================================
     // 태스크 핸들러
     // =========================================
 
@@ -102,29 +151,31 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
         });
     }, [activeBoardId]);
 
-    // 태스크 생성
+    // ✅ 태스크 생성 - 기본 컬럼에 배치
     const handleTaskCreate = useCallback(async (taskData: Partial<Task>): Promise<Task> => {
-        // ✅ 실제 컬럼 ID 사용 (첫 번째 컬럼 또는 전달된 column_id)
+        // 기본 컬럼 ID 가져오기
         let columnId = taskData.column_id;
 
         if (!columnId) {
-            // 컬럼이 없으면 에러
-            if (columns.length === 0) {
+            const defaultColumnId = getDefaultColumnId();
+
+            if (!defaultColumnId) {
                 throw new Error('프로젝트에 컬럼이 없습니다. 먼저 컬럼을 생성해주세요.');
             }
-            // 첫 번째 컬럼 사용
-            columnId = columns[0].id;
+            columnId = defaultColumnId;
         }
+
+        console.log('📝 Creating task in column:', columnId);
 
         const newTaskData: Omit<Task, 'id'> = {
             title: taskData.title || '새로운 카드',
             status: taskData.status || 'todo',
             x: taskData.x ?? 100,
             y: taskData.y ?? 100,
-            boardId: project.id, // 프로젝트 ID를 boardId로 사용
+            boardId: project.id,
             description: taskData.description,
             content: taskData.content,
-            column_id: columnId,
+            column_id: columnId, // ✅ 기본 컬럼 ID 사용
             taskType: taskData.taskType,
             card_type: taskData.card_type,
             time: taskData.time,
@@ -140,23 +191,43 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
         try {
             const newTask = await createTask(columnId, newTaskData);
             setTasks(prev => [...prev, newTask]);
+            console.log('✅ Task created:', newTask.id, 'in column:', columnId);
             return newTask;
         } catch (err) {
             console.error('❌ Failed to create task:', err);
             throw err;
         }
-    }, [project.id, columns]); // ✅ columns 의존성 추가
+    }, [project.id, getDefaultColumnId]);
 
-    // 태스크 업데이트
+    // ✅ 태스크 업데이트 (위치 변경 시 컬럼 ID도 함께 변경)
     const handleTaskUpdate = useCallback(async (taskId: number, updates: Partial<Task>): Promise<void> => {
         const previousTasks = [...tasks];
+        const task = tasks.find(t => t.id === taskId);
+
+        if (!task) {
+            console.error('Task not found:', taskId);
+            return;
+        }
+
+        // ✅ X 좌표가 변경되었으면 새 컬럼 찾기
+        let finalUpdates = { ...updates };
+
+        if (updates.x !== undefined && updates.x !== task.x) {
+            const newColumn = getColumnByXPosition(updates.x);
+            if (newColumn && newColumn.id !== task.column_id) {
+                finalUpdates.column_id = newColumn.id;
+                finalUpdates.status = newColumn.status;
+                console.log('📦 Moving task to column:', newColumn.title, '(id:', newColumn.id, ')');
+            }
+        }
 
         // 낙관적 UI 업데이트
-        setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...updates } : t));
+        setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...finalUpdates } : t));
 
         try {
             setIsSaving(true);
-            await updateTask(taskId, updates);
+            await updateTask(taskId, finalUpdates);
+            console.log('✅ Task updated:', taskId, finalUpdates);
         } catch (err) {
             console.error('❌ Failed to update task:', err);
             // 롤백
@@ -165,7 +236,25 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
         } finally {
             setIsSaving(false);
         }
-    }, [tasks]);
+    }, [tasks, getColumnByXPosition]);
+
+    // ✅ 태스크를 특정 컬럼으로 이동
+    const handleMoveTaskToColumn = useCallback(async (taskId: number, columnId: number): Promise<void> => {
+        const task = tasks.find(t => t.id === taskId);
+        const column = getColumnById(columnId);
+
+        if (!task || !column) {
+            console.error('Task or column not found');
+            return;
+        }
+
+        console.log('📦 Moving task', taskId, 'to column:', column.title);
+
+        await handleTaskUpdate(taskId, {
+            column_id: columnId,
+            status: column.status,
+        });
+    }, [tasks, getColumnById, handleTaskUpdate]);
 
     // 태스크 삭제
     const handleTaskDelete = useCallback(async (taskId: number): Promise<void> => {
@@ -176,6 +265,7 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
 
         try {
             await deleteTask(taskId);
+            console.log('🗑️ Task deleted:', taskId);
         } catch (err) {
             console.error('❌ Failed to delete task:', err);
             // 롤백
@@ -251,12 +341,61 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
     }, []);
 
     // =========================================
-    // 그룹 핸들러
+    // 그룹 핸들러 (그룹 내 카드도 함께 이동)
     // =========================================
 
     const handleGroupsUpdate = useCallback((newGroups: Group[]) => {
         setGroups(newGroups);
     }, []);
+
+    // ✅ 그룹 이동 시 내부 카드들의 컬럼도 변경
+    const handleGroupMove = useCallback(async (groupId: number, newX: number, newY: number) => {
+        const group = groups.find(g => g.id === groupId);
+        if (!group) return;
+
+        // 그룹 내 카드들 찾기
+        const groupTasks = tasks.filter(t => {
+            const tx = t.x || 0;
+            const ty = t.y || 0;
+            return tx >= group.x && tx <= group.x + group.width &&
+                ty >= group.y && ty <= group.y + group.height;
+        });
+
+        // 이동량 계산
+        const deltaX = newX - group.x;
+        const deltaY = newY - group.y;
+
+        // 새 위치 기준으로 컬럼 찾기
+        const newColumn = getColumnByXPosition(newX + group.width / 2);
+
+        // 그룹 위치 업데이트
+        setGroups(prev => prev.map(g =>
+            g.id === groupId ? { ...g, x: newX, y: newY } : g
+        ));
+
+        // 그룹 내 카드들 위치 및 컬럼 업데이트
+        for (const task of groupTasks) {
+            const newTaskX = (task.x || 0) + deltaX;
+            const newTaskY = (task.y || 0) + deltaY;
+
+            const updates: Partial<Task> = {
+                x: newTaskX,
+                y: newTaskY,
+            };
+
+            // 컬럼이 변경되었으면 column_id도 업데이트
+            if (newColumn && newColumn.id !== task.column_id) {
+                updates.column_id = newColumn.id;
+                updates.status = newColumn.status;
+            }
+
+            try {
+                await handleTaskUpdate(task.id, updates);
+            } catch (err) {
+                console.error('Failed to update task in group:', task.id, err);
+            }
+        }
+    }, [groups, tasks, getColumnByXPosition, handleTaskUpdate]);
 
     // =========================================
     // 기타 핸들러
@@ -314,8 +453,6 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
     }
 
     // 현재 보드의 태스크만 필터링
-    // Mock 모드: boardId로 필터링
-    // 실제 API 모드: 모든 태스크가 같은 프로젝트이므로 필터링 불필요하나 일관성을 위해 유지
     const filteredTasks = tasks.filter(t =>
         t.boardId === activeBoardId || t.boardId === project.id || activeBoardId === 1
     );
@@ -371,7 +508,7 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
                                 <div className="font-bold text-lg truncate mb-1" title={project.name}>{project.name}</div>
                                 <div className="text-xs text-gray-500 font-medium">{project.workspace}</div>
                                 <div className="text-xs text-gray-400 mt-2">
-                                    {filteredTasks.length}개의 카드 • {filteredConnections.length}개의 연결
+                                    {filteredTasks.length}개의 카드 • {filteredConnections.length}개의 연결 • {columns.length}개의 컬럼
                                 </div>
                             </div>
                         </div>
@@ -429,11 +566,13 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
                         <BoardCanvas
                             tasks={filteredTasks}
                             connections={filteredConnections}
+                            columns={columns}  // ✅ 컬럼 정보 전달
                             onTasksUpdate={handleBoardTasksUpdate}
                             onTaskSelect={handleTaskSelect}
                             onTaskCreate={handleTaskCreate}
                             onTaskUpdate={handleTaskUpdate}
                             onTaskDelete={handleTaskDelete}
+                            onMoveTaskToColumn={handleMoveTaskToColumn}  // ✅ 컬럼 이동 핸들러 전달
                             onConnectionCreate={handleConnectionCreate}
                             onConnectionDelete={handleConnectionDelete}
                             onConnectionUpdate={handleConnectionUpdate}
@@ -445,6 +584,7 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
                             snapToGrid={snapToGrid}
                             groups={filteredGroups}
                             onGroupsUpdate={handleGroupsUpdate}
+                            onGroupMove={handleGroupMove}  // ✅ 그룹 이동 핸들러 전달
                             onToggleGrid={handleToggleGrid}
                             onToggleTheme={handleToggleTheme}
                         />

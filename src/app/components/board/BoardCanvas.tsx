@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
-import { Task, Connection, Board, Group, TaskFile } from '../../../types';
+import { Task, Connection, Board, Group, TaskFile, Column } from '../../../types';
 import { TaskCard } from '../ui/TaskCard';
 import { deleteTask } from '../../../lib/api';
 import {
@@ -12,11 +12,13 @@ import {
 interface BoardCanvasProps {
     tasks: Task[];
     connections: Connection[];
+    columns: Column[];
     onTasksUpdate: (tasks: Task[]) => void;
     onTaskSelect: (task: Task) => void;
     onTaskCreate?: (taskData: Partial<Task>) => Promise<Task>;
     onTaskUpdate?: (taskId: number, updates: Partial<Task>) => Promise<void>;
-    onTaskDelete?: (taskId: number) => Promise<void>;  // 삭제 핸들러 추가
+    onTaskDelete?: (taskId: number) => Promise<void>;
+    onMoveTaskToColumn?: (taskId: number, columnId: number) => Promise<void>;
     onConnectionCreate: (from: number, to: number) => void;
     onConnectionDelete: (id: number) => void;
     onConnectionUpdate: (id: number, updates: Partial<Connection>) => void;
@@ -28,12 +30,17 @@ interface BoardCanvasProps {
     snapToGrid: boolean;
     groups: Group[];
     onGroupsUpdate: (groups: Group[]) => void;
+    onGroupMove?: (groupId: number, newX: number, newY: number) => Promise<void>;
     onToggleGrid: () => void;
     onToggleTheme: () => void;
 }
 
+const COLUMN_WIDTH = 350;
+const COLUMN_GAP = 30;
+const COLUMN_START_X = 50;
+
 export const BoardCanvas: React.FC<BoardCanvasProps> = ({
-                                                            tasks, connections, onTasksUpdate, onTaskSelect, onTaskCreate, onTaskUpdate, onTaskDelete, onConnectionCreate, onConnectionDelete, onConnectionUpdate, boards, activeBoardId, onSwitchBoard, onAddBoard, onRenameBoard, snapToGrid, groups, onGroupsUpdate, onToggleGrid, onToggleTheme
+                                                            tasks, connections, columns, onTasksUpdate, onTaskSelect, onTaskCreate, onTaskUpdate, onTaskDelete, onMoveTaskToColumn, onConnectionCreate, onConnectionDelete, onConnectionUpdate, boards, activeBoardId, onSwitchBoard, onAddBoard, onRenameBoard, snapToGrid, groups, onGroupsUpdate, onGroupMove, onToggleGrid, onToggleTheme
                                                         }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const boardSelectorRef = useRef<HTMLDivElement>(null);
@@ -58,11 +65,26 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
     const [newBoardName, setNewBoardName] = useState('');
     const [editingBoardId, setEditingBoardId] = useState<number | null>(null);
     const [editBoardName, setEditBoardName] = useState('');
+    const [hoveredColumnId, setHoveredColumnId] = useState<number | null>(null);
 
-    // API 호출 상태
     const [isCreatingTask, setIsCreatingTask] = useState(false);
     const [isSavingPosition, setIsSavingPosition] = useState(false);
-    const [isDeletingTask, setIsDeletingTask] = useState(false);  // 삭제 상태 추가
+    const [isDeletingTask, setIsDeletingTask] = useState(false);
+
+    const sortedColumns = [...columns].sort((a, b) => a.order - b.order);
+
+    const getColumnByX = useCallback((x: number): Column | null => {
+        if (sortedColumns.length === 0) return null;
+        for (let i = 0; i < sortedColumns.length; i++) {
+            const columnStartX = COLUMN_START_X + i * (COLUMN_WIDTH + COLUMN_GAP);
+            const columnEndX = columnStartX + COLUMN_WIDTH;
+            if (x >= columnStartX && x < columnEndX) {
+                return sortedColumns[i];
+            }
+        }
+        if (x < COLUMN_START_X) return sortedColumns[0];
+        return sortedColumns[sortedColumns.length - 1];
+    }, [sortedColumns]);
 
     const resetBoardMenuState = useCallback(() => {
         setIsCreatingBoard(false);
@@ -71,9 +93,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
     }, []);
 
     useEffect(() => {
-        if (!showBoardMenu) {
-            resetBoardMenuState();
-        }
+        if (!showBoardMenu) resetBoardMenuState();
     }, [showBoardMenu, resetBoardMenuState]);
 
     const updateConnections = useCallback(() => {
@@ -99,9 +119,8 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                     pathString = `M ${startX} ${startY} L ${endX} ${endY}`;
                 } else {
                     const cp1x = startX + dist * 0.5;
-                    const cp1y = startY;
                     const cp2x = endX - dist * 0.5;
-                    pathString = `M ${startX} ${startY} C ${cp1x} ${cp1y}, ${cp2x} ${endY}, ${endX} ${endY}`;
+                    pathString = `M ${startX} ${startY} C ${cp1x} ${startY}, ${cp2x} ${endY}, ${endX} ${endY}`;
                 }
                 const isSelected = activeMenu?.id === conn.id;
                 newLines.push(
@@ -117,9 +136,8 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         if (connectionDraft) {
             const dist = Math.abs(connectionDraft.currX - connectionDraft.startX);
             const cp1x = connectionDraft.startX + dist * 0.5;
-            const cp1y = connectionDraft.startY;
             const cp2x = connectionDraft.currX - dist * 0.5;
-            const pathString = `M ${connectionDraft.startX} ${connectionDraft.startY} C ${cp1x} ${cp1y}, ${cp2x} ${connectionDraft.currY}, ${connectionDraft.currX} ${connectionDraft.currY}`;
+            const pathString = `M ${connectionDraft.startX} ${connectionDraft.startY} C ${cp1x} ${connectionDraft.startY}, ${cp2x} ${connectionDraft.currY}, ${connectionDraft.currX} ${connectionDraft.currY}`;
             newLines.push(<g key="draft"><path d={pathString} fill="none" stroke="#0a84ff" strokeWidth="2" strokeDasharray="5,5" strokeLinecap="round" /><circle cx={connectionDraft.currX} cy={connectionDraft.currY} r="4" fill="#0a84ff" /></g>);
         }
         setLines(newLines);
@@ -138,34 +156,26 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
     useEffect(() => {
         const handleKeyDown = (evt: KeyboardEvent) => {
             const key = evt.key.toLowerCase();
-
             if (key === 'c' && selectedTaskIds.size > 0) {
                 evt.preventDefault();
                 const selectedTasks = tasks.filter(t => selectedTaskIds.has(t.id));
                 if (selectedTasks.length === 0) return;
                 let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
                 selectedTasks.forEach(t => {
-                    const tx = t.x || 0;
-                    const ty = t.y || 0;
-                    const tWidth = 280;
-                    const tHeight = 200;
-                    minX = Math.min(minX, tx);
-                    minY = Math.min(minY, ty);
-                    maxX = Math.max(maxX, tx + tWidth);
-                    maxY = Math.max(maxY, ty + tHeight);
+                    minX = Math.min(minX, t.x || 0);
+                    minY = Math.min(minY, t.y || 0);
+                    maxX = Math.max(maxX, (t.x || 0) + 280);
+                    maxY = Math.max(maxY, (t.y || 0) + 200);
                 });
                 const padding = 40;
                 const newGroup: Group = { id: Date.now(), title: 'Group', x: minX - padding, y: minY - padding, width: maxX - minX + (padding * 2), height: maxY - minY + (padding * 2), boardId: activeBoardId };
                 onGroupsUpdate([...groups, newGroup]);
                 setSelectedTaskIds(new Set());
             }
-
             if (key === 'n') {
                 evt.preventDefault();
                 handleCreateNewTask(mousePosRef.current.x - 140, mousePosRef.current.y - 40);
             }
-
-            // Delete 키로 선택된 카드 삭제
             if ((key === 'delete' || key === 'backspace') && selectedTaskIds.size > 0) {
                 evt.preventDefault();
                 handleDeleteSelectedTasks();
@@ -176,52 +186,34 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
     }, [selectedTaskIds, tasks, activeBoardId, groups, onGroupsUpdate]);
 
     useEffect(() => {
-        const handleClickOutside = () => {
+        const handleClickOutside = (evt: MouseEvent) => {
             setActiveMenu(null);
             setBackgroundMenu(null);
-            if (editingGroupId) {
-                setEditingGroupId(null);
-            }
-        };
-
-        const handleClickOutsideWithRef = (evt: MouseEvent) => {
-            handleClickOutside();
+            if (editingGroupId) setEditingGroupId(null);
             if (boardSelectorRef.current && !boardSelectorRef.current.contains(evt.target as Node)) {
                 setShowBoardMenu(false);
             }
         };
-
-        window.addEventListener('mousedown', handleClickOutsideWithRef);
-        return () => window.removeEventListener('mousedown', handleClickOutsideWithRef);
+        window.addEventListener('mousedown', handleClickOutside);
+        return () => window.removeEventListener('mousedown', handleClickOutside);
     }, [editingGroupId]);
 
-    // 새 태스크 생성 함수
     const handleCreateNewTask = async (x: number, y: number) => {
         if (isCreatingTask) return;
-
+        const targetColumn = getColumnByX(x);
         const newTaskData: Partial<Task> = {
             title: "새로운 카드",
-            status: "todo",
-            x,
-            y,
+            status: targetColumn?.status || "todo",
+            x, y,
             tags: [],
-            boardId: activeBoardId
+            boardId: activeBoardId,
+            column_id: targetColumn?.id,
         };
 
         if (onTaskCreate) {
             setIsCreatingTask(true);
-
-            const tempTask: Task = {
-                ...newTaskData,
-                id: Date.now(),
-                status: 'todo',
-                x,
-                y,
-                boardId: activeBoardId,
-            } as Task;
-
+            const tempTask: Task = { ...newTaskData, id: Date.now(), status: targetColumn?.status || 'todo', x, y, boardId: activeBoardId } as Task;
             onTasksUpdate([...tasks, tempTask]);
-
             try {
                 const savedTask = await onTaskCreate(newTaskData);
                 onTasksUpdate(tasks.filter(t => t.id !== tempTask.id).concat(savedTask));
@@ -233,26 +225,25 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                 setIsCreatingTask(false);
             }
         } else {
-            const newTask: Task = {
-                ...newTaskData,
-                id: Date.now(),
-                status: 'todo',
-                x,
-                y,
-                boardId: activeBoardId,
-            } as Task;
+            const newTask: Task = { ...newTaskData, id: Date.now(), status: 'todo', x, y, boardId: activeBoardId } as Task;
             onTasksUpdate([...tasks, newTask]);
             onTaskSelect(newTask);
         }
     };
 
-    // 태스크 위치 저장 함수
     const saveTaskPosition = async (taskId: number, x: number, y: number) => {
         if (!onTaskUpdate) return;
-
+        const targetColumn = getColumnByX(x);
+        const task = tasks.find(t => t.id === taskId);
+        const updates: Partial<Task> = { x, y };
+        if (targetColumn && task && targetColumn.id !== task.column_id) {
+            updates.column_id = targetColumn.id;
+            updates.status = targetColumn.status;
+            console.log(`📦 Task ${taskId} moved to column: ${targetColumn.title}`);
+        }
         setIsSavingPosition(true);
         try {
-            await onTaskUpdate(taskId, { x, y });
+            await onTaskUpdate(taskId, updates);
         } catch (err) {
             console.error('Failed to save position:', err);
         } finally {
@@ -260,30 +251,17 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         }
     };
 
-    // ✅ 카드 삭제 함수 (API 연결)
     const handleDeleteTask = async (taskId: number) => {
         if (isDeletingTask) return;
-
         setIsDeletingTask(true);
         const previousTasks = [...tasks];
-
-        // 낙관적 UI 업데이트
         onTasksUpdate(tasks.filter(t => t.id !== taskId));
-
-        // 연결선도 함께 삭제
-        const relatedConnections = connections.filter(c => c.from === taskId || c.to === taskId);
-        relatedConnections.forEach(c => onConnectionDelete(c.id));
-
+        connections.filter(c => c.from === taskId || c.to === taskId).forEach(c => onConnectionDelete(c.id));
         try {
-            if (onTaskDelete) {
-                await onTaskDelete(taskId);
-            } else {
-                // onTaskDelete가 없으면 직접 API 호출
-                await deleteTask(taskId);
-            }
+            if (onTaskDelete) await onTaskDelete(taskId);
+            else await deleteTask(taskId);
         } catch (err) {
             console.error('Failed to delete task:', err);
-            // 롤백
             onTasksUpdate(previousTasks);
             alert('카드 삭제에 실패했습니다.');
         } finally {
@@ -292,16 +270,11 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         }
     };
 
-    // 선택된 모든 태스크 삭제
     const handleDeleteSelectedTasks = async () => {
         if (selectedTaskIds.size === 0) return;
-
-        const idsToDelete = Array.from(selectedTaskIds);
-
-        for (const id of idsToDelete) {
+        for (const id of Array.from(selectedTaskIds)) {
             await handleDeleteTask(id);
         }
-
         setSelectedTaskIds(new Set());
     };
 
@@ -319,23 +292,14 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
             setSelectionBox({ startX: x, startY: y, currX: x, currY: y });
             return;
         }
-
         if (group) {
             e.stopPropagation();
             (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
             const contained = tasks.filter(t => {
-                const tx = t.x || 0;
-                const ty = t.y || 0;
+                const tx = t.x || 0, ty = t.y || 0;
                 return tx >= group.x && tx <= group.x + group.width && ty >= group.y && ty <= group.y + group.height;
             }).map(t => ({ id: t.id, initialX: t.x || 0, initialY: t.y || 0 }));
-            setGroupDragState({
-                id: group.id,
-                startX: e.clientX,
-                startY: e.clientY,
-                initialGroupX: group.x,
-                initialGroupY: group.y,
-                containedTaskIds: contained
-            });
+            setGroupDragState({ id: group.id, startX: e.clientX, startY: e.clientY, initialGroupX: group.x, initialGroupY: group.y, containedTaskIds: contained });
             setActiveMenu(null);
             setBackgroundMenu(null);
             return;
@@ -375,7 +339,6 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         const rect = container.getBoundingClientRect();
         const x = e.clientX - rect.left + container.scrollLeft;
         const y = e.clientY - rect.top + container.scrollTop;
-
         mousePosRef.current = { x, y };
 
         if (selectionBox) {
@@ -386,11 +349,8 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
             const boxEndY = Math.max(selectionBox.startY, y);
             const newSelectedIds = new Set<number>();
             tasks.forEach(t => {
-                const tx = t.x || 0;
-                const ty = t.y || 0;
-                const tw = 280;
-                const th = 100;
-                if (tx < boxEndX && tx + tw > boxStartX && ty < boxEndY && ty + th > boxStartY) {
+                const tx = t.x || 0, ty = t.y || 0;
+                if (tx < boxEndX && tx + 280 > boxStartX && ty < boxEndY && ty + 100 > boxStartY) {
                     newSelectedIds.add(t.id);
                 }
             });
@@ -400,60 +360,55 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
             const deltaY = e.clientY - groupDragState.startY;
             let newGroupX = groupDragState.initialGroupX + deltaX;
             let newGroupY = groupDragState.initialGroupY + deltaY;
-
             if (snapToGrid) {
                 newGroupX = Math.round(newGroupX / 20) * 20;
                 newGroupY = Math.round(newGroupY / 20) * 20;
             }
-
+            const targetColumn = getColumnByX(newGroupX + 140);
+            setHoveredColumnId(targetColumn?.id || null);
             onGroupsUpdate(groups.map(g => g.id === groupDragState.id ? { ...g, x: newGroupX, y: newGroupY } : g));
-
             if (groupDragState.containedTaskIds.length > 0) {
                 const effectiveDeltaX = newGroupX - groupDragState.initialGroupX;
                 const effectiveDeltaY = newGroupY - groupDragState.initialGroupY;
-
-                const updatedTasks = tasks.map(t => {
+                onTasksUpdate(tasks.map(t => {
                     const c = groupDragState.containedTaskIds.find(item => item.id === t.id);
-                    if (c) {
-                        return { ...t, x: c.initialX + effectiveDeltaX, y: c.initialY + effectiveDeltaY };
-                    }
-                    return t;
-                });
-                onTasksUpdate(updatedTasks);
+                    return c ? { ...t, x: c.initialX + effectiveDeltaX, y: c.initialY + effectiveDeltaY } : t;
+                }));
             }
         } else if (dragState) {
             const deltaX = e.clientX - dragState.startX;
             const deltaY = e.clientY - dragState.startY;
             let newX = dragState.initialTaskX + deltaX;
             let newY = dragState.initialTaskY + deltaY;
-
             if (snapToGrid) {
                 newX = Math.round(newX / 20) * 20;
                 newY = Math.round(newY / 20) * 20;
             }
-
-            const updatedTasks = tasks.map(t => t.id === dragState.id ? { ...t, x: newX, y: newY } : t);
-            onTasksUpdate(updatedTasks);
+            const targetColumn = getColumnByX(newX + 140);
+            setHoveredColumnId(targetColumn?.id || null);
+            onTasksUpdate(tasks.map(t => t.id === dragState.id ? { ...t, x: newX, y: newY } : t));
         } else if (connectionDraft) {
             setConnectionDraft(prev => prev ? { ...prev, currX: x, currY: y } : null);
         }
     };
 
-    const handlePointerUp = () => {
+    const handlePointerUp = async () => {
+        setHoveredColumnId(null);
         if (selectionBox) setSelectionBox(null);
-
         if (dragState) {
             const task = tasks.find(t => t.id === dragState.id);
-            if (task) {
-                const hasMoved = task.x !== dragState.initialTaskX || task.y !== dragState.initialTaskY;
-                if (hasMoved && task.x !== undefined && task.y !== undefined) {
-                    saveTaskPosition(dragState.id, task.x, task.y);
-                }
+            if (task && (task.x !== dragState.initialTaskX || task.y !== dragState.initialTaskY) && task.x !== undefined && task.y !== undefined) {
+                await saveTaskPosition(dragState.id, task.x, task.y);
             }
             setDragState(null);
         }
-
-        if (groupDragState) setGroupDragState(null);
+        if (groupDragState) {
+            const group = groups.find(g => g.id === groupDragState.id);
+            if (group && onGroupMove) {
+                await onGroupMove(groupDragState.id, group.x, group.y);
+            }
+            setGroupDragState(null);
+        }
         if (connectionDraft) setConnectionDraft(null);
     };
 
@@ -464,101 +419,34 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         const rect = container.getBoundingClientRect();
         const x = e.clientX - rect.left + container.scrollLeft;
         const y = e.clientY - rect.top + container.scrollTop;
-
         const taskEl = (e.target as HTMLElement).closest('[id^="task-"]');
         const targetTaskId = taskEl ? parseInt(taskEl.id.replace('task-', ''), 10) : undefined;
-
         setActiveMenu(null);
-
-        if (targetTaskId) {
-            setSelectedTaskIds(new Set([targetTaskId]));
-        } else {
-            setSelectedTaskIds(new Set());
-        }
-
+        setSelectedTaskIds(targetTaskId ? new Set([targetTaskId]) : new Set());
         setBackgroundMenu({ x, y, taskX: x - 140, taskY: y - 70, targetTaskId });
     };
 
-    const handleCreateTaskFromMenu = () => {
-        if (!backgroundMenu) return;
-        handleCreateNewTask(backgroundMenu.taskX, backgroundMenu.taskY);
-        setBackgroundMenu(null);
-    };
-
     const getConnectionById = (id: number) => connections.find(c => c.id === id);
-
-    const handleGlobalFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files.length > 0) {
-            const fileList = Array.from(e.target.files) as File[];
-            if (!containerRef.current) return;
-            const container = containerRef.current;
-
-            const taskFiles: TaskFile[] = fileList.map(f => ({
-                name: f.name,
-                url: URL.createObjectURL(f),
-                size: f.size,
-                type: f.type
-            }));
-
-            const isFolder = taskFiles.length > 1;
-
-            const newTask: Task = {
-                id: Date.now(),
-                title: isFolder ? "새 폴더" : taskFiles[0].name,
-                status: 'todo',
-                description: isFolder ? `${taskFiles.length}개의 파일` : `Type: ${taskFiles[0].type}\nSize: ${(taskFiles[0].size / 1024).toFixed(1)} KB`,
-                x: container.scrollLeft + (container.clientWidth / 2) - 50,
-                y: container.scrollTop + (container.clientHeight / 2) - 50,
-                tags: [],
-                boardId: activeBoardId,
-                taskType: 2,
-                files: taskFiles
-            };
-            onTasksUpdate([...tasks, newTask]);
-            onTaskSelect(newTask);
-            e.target.value = '';
-        }
-    };
-
-    const handleTaskFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (activeTaskForFile && e.target.files && e.target.files.length > 0) {
-            const fileList = Array.from(e.target.files) as File[];
-            const newFiles: TaskFile[] = fileList.map(f => ({
-                name: f.name,
-                url: URL.createObjectURL(f),
-                size: f.size,
-                type: f.type
-            }));
-
-            const task = tasks.find(t => t.id === activeTaskForFile);
-            if (task) {
-                const updatedTask: Task = {
-                    ...task,
-                    files: [...(task.files || []), ...newFiles],
-                    taskType: task.taskType !== 2 ? 2 : task.taskType
-                };
-                onTasksUpdate(tasks.map(t => t.id === task.id ? updatedTask : t));
-            }
-            setActiveTaskForFile(null);
-            e.target.value = '';
+    const getColumnColor = (status: string) => {
+        switch (status) {
+            case 'todo': return 'bg-blue-500/10 border-blue-500/30';
+            case 'doing':
+            case 'in-progress': return 'bg-yellow-500/10 border-yellow-500/30';
+            case 'done': return 'bg-green-500/10 border-green-500/30';
+            default: return 'bg-gray-500/10 border-gray-500/30';
         }
     };
 
     return (
         <div className="flex flex-col h-full bg-white/30 dark:bg-black/20 backdrop-blur-xl relative w-full overflow-hidden">
+            {/* Header */}
             <div className="p-4 border-b border-white/20 dark:border-white/5 flex justify-between items-center bg-white/20 dark:bg-black/20 backdrop-blur-md relative z-20 shadow-sm">
                 <div className="relative" ref={boardSelectorRef}>
-                    <button
-                        onClick={(evt) => { evt.stopPropagation(); setShowBoardMenu(!showBoardMenu); }}
-                        className="flex items-center gap-2 hover:bg-black/5 dark:hover:bg-white/10 px-3 py-1.5 rounded-xl transition-colors group"
-                    >
-                        <div className="bg-white/50 dark:bg-white/10 p-1.5 rounded-lg group-hover:scale-105 transition-transform">
-                            <LayoutDashboard size={18} className="text-gray-700 dark:text-gray-200" />
-                        </div>
+                    <button onClick={(evt) => { evt.stopPropagation(); setShowBoardMenu(!showBoardMenu); }} className="flex items-center gap-2 hover:bg-black/5 dark:hover:bg-white/10 px-3 py-1.5 rounded-xl transition-colors group">
+                        <div className="bg-white/50 dark:bg-white/10 p-1.5 rounded-lg"><LayoutDashboard size={18} className="text-gray-700 dark:text-gray-200" /></div>
                         <h2 className="font-bold text-gray-800 dark:text-gray-100 text-lg tracking-tight">{boards.find(b => b.id === activeBoardId)?.title}</h2>
                         <ChevronDown size={16} className={`text-gray-500 transition-transform duration-200 ${showBoardMenu ? 'rotate-180' : ''}`} />
                     </button>
-
                     {showBoardMenu && (
                         <div className="absolute top-full left-0 mt-2 w-64 glass-card rounded-2xl overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-150">
                             <div className="p-2 border-b border-white/20 dark:border-white/10">
@@ -567,50 +455,16 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                                     <div key={board.id} className="group relative">
                                         {editingBoardId === board.id ? (
                                             <div className="px-3 py-2 flex items-center gap-2">
-                                                <input
-                                                    autoFocus
-                                                    className="bg-transparent border-b border-blue-500 px-1 text-sm text-gray-800 dark:text-white w-full outline-none"
-                                                    value={editBoardName}
-                                                    onChange={(evt) => setEditBoardName(evt.target.value)}
-                                                    onClick={(evt) => evt.stopPropagation()}
-                                                    onKeyDown={(evt) => {
-                                                        if (evt.key === 'Enter') {
-                                                            if (editBoardName.trim()) onRenameBoard(board.id, editBoardName.trim());
-                                                            setEditingBoardId(null);
-                                                        }
-                                                    }}
-                                                />
-                                                <button onClick={(evt) => {
-                                                    evt.stopPropagation();
-                                                    if (editBoardName.trim()) onRenameBoard(board.id, editBoardName.trim());
-                                                    setEditingBoardId(null);
-                                                }}>
-                                                    <Check size={14} className="text-green-500" />
-                                                </button>
-                                                <button onClick={(evt) => { evt.stopPropagation(); setEditingBoardId(null); }}><X size={14} className="text-red-500" /></button>
+                                                <input autoFocus className="bg-transparent border-b border-blue-500 px-1 text-sm text-gray-800 dark:text-white w-full outline-none" value={editBoardName} onChange={(e) => setEditBoardName(e.target.value)} onClick={(e) => e.stopPropagation()} onKeyDown={(e) => { if (e.key === 'Enter') { if (editBoardName.trim()) onRenameBoard(board.id, editBoardName.trim()); setEditingBoardId(null); } }} />
+                                                <button onClick={(e) => { e.stopPropagation(); if (editBoardName.trim()) onRenameBoard(board.id, editBoardName.trim()); setEditingBoardId(null); }}><Check size={14} className="text-green-500" /></button>
+                                                <button onClick={(e) => { e.stopPropagation(); setEditingBoardId(null); }}><X size={14} className="text-red-500" /></button>
                                             </div>
                                         ) : (
-                                            <button
-                                                onClick={(evt) => {
-                                                    evt.stopPropagation();
-                                                    onSwitchBoard(board.id);
-                                                    setShowBoardMenu(false);
-                                                }}
-                                                className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-black/5 dark:hover:bg-white/10 rounded-xl text-sm text-gray-700 dark:text-gray-200 transition-colors group"
-                                            >
+                                            <button onClick={(e) => { e.stopPropagation(); onSwitchBoard(board.id); setShowBoardMenu(false); }} className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-black/5 dark:hover:bg-white/10 rounded-xl text-sm text-gray-700 dark:text-gray-200 transition-colors group">
                                                 <span className="font-medium truncate max-w-[140px]">{board.title}</span>
                                                 <div className="flex items-center gap-2">
                                                     {board.id === activeBoardId && <Check size={16} className="text-blue-500" />}
-                                                    <div
-                                                        className="p-1 hover:bg-black/5 dark:hover:bg-white/10 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                                                        onClick={(evt) => {
-                                                            evt.stopPropagation();
-                                                            setEditingBoardId(board.id);
-                                                            setEditBoardName(board.title);
-                                                        }}
-                                                    >
-                                                        <Pencil size={12} className="text-gray-400 hover:text-gray-600 dark:hover:text-white" />
-                                                    </div>
+                                                    <div className="p-1 hover:bg-black/5 dark:hover:bg-white/10 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => { e.stopPropagation(); setEditingBoardId(board.id); setEditBoardName(board.title); }}><Pencil size={12} className="text-gray-400 hover:text-gray-600 dark:hover:text-white" /></div>
                                                 </div>
                                             </button>
                                         )}
@@ -620,191 +474,119 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                             <div className="p-2">
                                 {isCreatingBoard ? (
                                     <div className="p-2 bg-gray-50 dark:bg-black/30 rounded-xl">
-                                        <input
-                                            autoFocus
-                                            type="text"
-                                            className="w-full bg-white dark:bg-white/5 text-gray-800 dark:text-white text-sm rounded-lg px-2 py-1.5 border border-transparent focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none mb-2"
-                                            placeholder="보드 이름 입력"
-                                            value={newBoardName}
-                                            onChange={(evt) => setNewBoardName(evt.target.value)}
-                                            onClick={(evt) => evt.stopPropagation()}
-                                            onKeyDown={(evt) => {
-                                                evt.stopPropagation();
-                                                if (evt.key === 'Enter' && newBoardName.trim()) {
-                                                    onAddBoard(newBoardName.trim());
-                                                    setShowBoardMenu(false);
-                                                }
-                                            }}
-                                        />
+                                        <input autoFocus type="text" className="w-full bg-white dark:bg-white/5 text-gray-800 dark:text-white text-sm rounded-lg px-2 py-1.5 border border-transparent focus:border-blue-500 outline-none mb-2" placeholder="보드 이름 입력" value={newBoardName} onChange={(e) => setNewBoardName(e.target.value)} onClick={(e) => e.stopPropagation()} onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter' && newBoardName.trim()) { onAddBoard(newBoardName.trim()); setShowBoardMenu(false); } }} />
                                         <div className="flex gap-2 justify-end">
-                                            <button
-                                                onClick={(evt) => {
-                                                    evt.stopPropagation();
-                                                    setIsCreatingBoard(false);
-                                                }}
-                                                className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-800 dark:hover:text-white"
-                                            >
-                                                취소
-                                            </button>
-                                            <button
-                                                onClick={(evt) => {
-                                                    evt.stopPropagation();
-                                                    if (newBoardName.trim()) {
-                                                        onAddBoard(newBoardName.trim());
-                                                        setShowBoardMenu(false);
-                                                    }
-                                                }}
-                                                className="px-3 py-1.5 bg-blue-500 text-white text-xs rounded-lg hover:bg-blue-600 font-medium"
-                                            >
-                                                만들기
-                                            </button>
+                                            <button onClick={(e) => { e.stopPropagation(); setIsCreatingBoard(false); }} className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-800 dark:hover:text-white">취소</button>
+                                            <button onClick={(e) => { e.stopPropagation(); if (newBoardName.trim()) { onAddBoard(newBoardName.trim()); setShowBoardMenu(false); } }} className="px-3 py-1.5 bg-blue-500 text-white text-xs rounded-lg hover:bg-blue-600 font-medium">만들기</button>
                                         </div>
                                     </div>
                                 ) : (
-                                    <button
-                                        onClick={(evt) => {
-                                            evt.stopPropagation();
-                                            setIsCreatingBoard(true);
-                                        }}
-                                        className="w-full flex items-center gap-2 px-3 py-2.5 hover:bg-black/5 dark:hover:bg-white/10 rounded-xl text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-all font-medium"
-                                    >
-                                        <Plus size={16} />
-                                        <span>새 보드 만들기</span>
-                                    </button>
+                                    <button onClick={(e) => { e.stopPropagation(); setIsCreatingBoard(true); }} className="w-full flex items-center gap-2 px-3 py-2.5 hover:bg-black/5 dark:hover:bg-white/10 rounded-xl text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-all font-medium"><Plus size={16} /><span>새 보드 만들기</span></button>
                                 )}
                             </div>
                         </div>
                     )}
                 </div>
-
                 <div className="flex items-center gap-6 mr-6">
                     <div className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-4 font-medium">
-                        {/* 저장 중 표시 */}
-                        {(isCreatingTask || isSavingPosition || isDeletingTask) && (
-                            <div className="flex items-center gap-1.5 bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded-lg text-blue-600 dark:text-blue-400">
-                                <Loader2 size={12} className="animate-spin" />
-                                <span>{isDeletingTask ? '삭제 중...' : '저장 중...'}</span>
-                            </div>
-                        )}
+                        {(isCreatingTask || isSavingPosition || isDeletingTask) && (<div className="flex items-center gap-1.5 bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded-lg text-blue-600 dark:text-blue-400"><Loader2 size={12} className="animate-spin" /><span>{isDeletingTask ? '삭제 중...' : '저장 중...'}</span></div>)}
                         <div className="flex items-center gap-1.5 bg-white/50 dark:bg-white/10 px-2 py-1 rounded-lg backdrop-blur-sm shadow-sm"><span className="bg-gray-200 dark:bg-white/20 px-1.5 rounded text-[10px] uppercase">Ctrl</span><span>Select</span></div>
-                        <div className="flex items-center gap-1.5 bg-white/50 dark:bg-white/10 px-2 py-1 rounded-lg backdrop-blur-sm shadow-sm"><span className="bg-gray-200 dark:bg-white/20 px-1.5 rounded text-[10px] uppercase">G</span><span>Group</span></div>
+                        <div className="flex items-center gap-1.5 bg-white/50 dark:bg-white/10 px-2 py-1 rounded-lg backdrop-blur-sm shadow-sm"><span className="bg-gray-200 dark:bg-white/20 px-1.5 rounded text-[10px] uppercase">C</span><span>Group</span></div>
                         <div className="flex items-center gap-1.5 bg-white/50 dark:bg-white/10 px-2 py-1 rounded-lg backdrop-blur-sm shadow-sm"><span className="bg-gray-200 dark:bg-white/20 px-1.5 rounded text-[10px] uppercase">Del</span><span>Delete</span></div>
                         <div className="flex items-center gap-2 border-l border-gray-300 dark:border-white/10 pl-4"><MousePointer2 size={12} /><span>우클릭 / &apos;N&apos;</span></div>
                     </div>
-
                     <div className="h-6 w-[1px] bg-gray-300 dark:bg-white/10"></div>
-
                     <div className="flex items-center gap-3">
-                        <button
-                            onClick={onToggleGrid}
-                            className={`p-2 rounded-lg transition-all duration-200 hover:bg-black/5 dark:hover:bg-white/10 ${snapToGrid ? 'text-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'text-gray-400 dark:text-gray-500'}`}
-                            title={snapToGrid ? "스냅 끄기" : "스냅 켜기"}
-                        >
-                            <Grid size={18} />
-                        </button>
-                        <button
-                            onClick={onToggleTheme}
-                            className="p-2 text-gray-400 dark:text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/10 rounded-lg transition-colors"
-                        >
-                            <Sun size={18} className="hidden dark:block" />
-                            <Moon size={18} className="block dark:hidden" />
-                        </button>
+                        <button onClick={onToggleGrid} className={`p-2 rounded-lg transition-all duration-200 hover:bg-black/5 dark:hover:bg-white/10 ${snapToGrid ? 'text-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'text-gray-400 dark:text-gray-500'}`} title={snapToGrid ? "스냅 끄기" : "스냅 켜기"}><Grid size={18} /></button>
+                        <button onClick={onToggleTheme} className="p-2 text-gray-400 dark:text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/10 rounded-lg transition-colors"><Sun size={18} className="hidden dark:block" /><Moon size={18} className="block dark:hidden" /></button>
                     </div>
                 </div>
             </div>
 
+            {/* Canvas with Column Overlays */}
             <div ref={containerRef} className="flex-1 overflow-auto relative custom-scrollbar w-full h-full bg-[radial-gradient(rgba(0,0,0,0.05)_1px,transparent_1px)] dark:bg-[radial-gradient(rgba(255,255,255,0.08)_1px,transparent_1px)] bg-[length:24px_24px]" onContextMenu={handleBackgroundContextMenu} onPointerDown={(evt) => handlePointerDown(evt)} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerLeave={handlePointerUp}>
+
+                {/* ✅ Column Drop Zones */}
+                {sortedColumns.map((col, idx) => (
+                    <div
+                        key={col.id}
+                        className={`absolute top-0 h-full border-2 border-dashed transition-all duration-200 rounded-2xl pointer-events-none ${
+                            hoveredColumnId === col.id
+                                ? `${getColumnColor(col.status)} border-opacity-100 bg-opacity-30`
+                                : 'border-transparent bg-transparent'
+                        }`}
+                        style={{
+                            left: COLUMN_START_X + idx * (COLUMN_WIDTH + COLUMN_GAP),
+                            width: COLUMN_WIDTH,
+                        }}
+                    >
+                        {/* Column Header */}
+                        <div className={`sticky top-2 mx-2 px-4 py-2 rounded-xl text-sm font-bold backdrop-blur-md ${getColumnColor(col.status)} border`}>
+                            <span className="flex items-center gap-2">
+                                <span className={`w-2 h-2 rounded-full ${col.status === 'todo' ? 'bg-blue-500' : col.status === 'done' ? 'bg-green-500' : 'bg-yellow-500'}`}></span>
+                                {col.title}
+                                <span className="ml-auto text-xs opacity-60">
+                                    {tasks.filter(t => t.column_id === col.id).length}
+                                </span>
+                            </span>
+                        </div>
+                    </div>
+                ))}
+
                 <svg className="absolute top-0 left-0 pointer-events-none z-0" style={{ width: Math.max(svgSize.width, 2000), height: Math.max(svgSize.height, 2000) }}>{lines}</svg>
+
                 {groups.map(group => (
                     <div key={group.id} className="absolute border-2 border-dashed border-gray-300/60 dark:border-white/10 bg-white/30 dark:bg-white/5 rounded-[2rem] transition-all duration-300 group/item hover:border-blue-400/50 hover:bg-white/40 dark:hover:bg-white/10 backdrop-blur-sm" style={{ left: group.x, top: group.y, width: group.width, height: group.height, cursor: groupDragState ? 'grabbing' : 'grab', pointerEvents: 'auto' }} onPointerDown={(evt) => handlePointerDown(evt, undefined, group)}>
                         <div className="absolute -top-10 left-0 min-w-[100px] pointer-events-auto" onPointerDown={(evt) => evt.stopPropagation()} onClick={(evt) => evt.stopPropagation()}>
                             {editingGroupId === group.id ? (
                                 <div className="flex items-center gap-2 bg-white dark:bg-gray-900 p-2 rounded-xl shadow-lg border border-gray-200 dark:border-white/10">
-                                    <Layers size={14} className="text-blue-500" /><input autoFocus type="text" value={editingGroupTitle} onChange={(evt) => setEditingGroupTitle(evt.target.value)} onBlur={() => { if (editingGroupTitle.trim()) { onGroupsUpdate(groups.map(g => g.id === group.id ? { ...g, title: editingGroupTitle } : g)); } setEditingGroupId(null); }} onKeyDown={(evt) => { if (evt.key === 'Enter') { if (editingGroupTitle.trim()) { onGroupsUpdate(groups.map(g => g.id === group.id ? { ...g, title: editingGroupTitle } : g)); } setEditingGroupId(null); } }} className="bg-transparent text-sm text-gray-800 dark:text-white outline-none w-32 font-bold" />
+                                    <Layers size={14} className="text-blue-500" /><input autoFocus type="text" value={editingGroupTitle} onChange={(e) => setEditingGroupTitle(e.target.value)} onBlur={() => { if (editingGroupTitle.trim()) { onGroupsUpdate(groups.map(g => g.id === group.id ? { ...g, title: editingGroupTitle } : g)); } setEditingGroupId(null); }} onKeyDown={(e) => { if (e.key === 'Enter') { if (editingGroupTitle.trim()) { onGroupsUpdate(groups.map(g => g.id === group.id ? { ...g, title: editingGroupTitle } : g)); } setEditingGroupId(null); } }} className="bg-transparent text-sm text-gray-800 dark:text-white outline-none w-32 font-bold" />
                                 </div>
                             ) : (
-                                <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white font-bold text-sm cursor-text px-3 py-1.5 hover:bg-white/50 dark:hover:bg-white/10 rounded-xl transition-colors backdrop-blur-md" onClick={() => {
-                                    setEditingGroupId(group.id);
-                                    setEditingGroupTitle(group.title);
-                                }}><Layers size={16} />{group.title}</div>
+                                <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white font-bold text-sm cursor-text px-3 py-1.5 hover:bg-white/50 dark:hover:bg-white/10 rounded-xl transition-colors backdrop-blur-md" onClick={() => { setEditingGroupId(group.id); setEditingGroupTitle(group.title); }}><Layers size={16} />{group.title}</div>
                             )}
                         </div>
                     </div>
                 ))}
+
                 {tasks.map(task => (
-                    <TaskCard
-                        key={task.id}
-                        task={task}
-                        variant="sticky"
-                        style={{ position: 'absolute', left: task.x || 0, top: task.y || 0 }}
-                        isSelected={selectedTaskIds.has(task.id)}
-                        onPointerDown={(evt) => handlePointerDown(evt, task)}
-                        onClick={() => onTaskSelect(task)}
-                        onConnectStart={handleConnectStart}
-                        onConnectEnd={handleConnectEnd}
-                        onAttachFile={(taskId) => { setActiveTaskForFile(taskId); taskFileInputRef.current?.click(); }}
-                    />
+                    <TaskCard key={task.id} task={task} variant="sticky" style={{ position: 'absolute', left: task.x || 0, top: task.y || 0 }} isSelected={selectedTaskIds.has(task.id)} onPointerDown={(evt) => handlePointerDown(evt, task)} onClick={() => onTaskSelect(task)} onConnectStart={handleConnectStart} onConnectEnd={handleConnectEnd} onAttachFile={(taskId) => { setActiveTaskForFile(taskId); taskFileInputRef.current?.click(); }} />
                 ))}
+
                 {selectionBox && (<div className="absolute border-2 border-blue-500/50 bg-blue-500/10 rounded-xl z-50 pointer-events-none backdrop-blur-sm" style={{ left: Math.min(selectionBox.startX, selectionBox.currX), top: Math.min(selectionBox.startY, selectionBox.currY), width: Math.abs(selectionBox.currX - selectionBox.startX), height: Math.abs(selectionBox.currY - selectionBox.startY) }} />)}
+
                 {activeMenu && (
-                    <div className="absolute z-50 glass-card rounded-2xl overflow-hidden min-w-[140px] animate-in fade-in zoom-in-95 duration-100" style={{ left: activeMenu.x, top: activeMenu.y }} onClick={(evt) => evt.stopPropagation()} onPointerDown={(evt) => evt.stopPropagation()} onMouseDown={(evt) => evt.stopPropagation()}>
+                    <div className="absolute z-50 glass-card rounded-2xl overflow-hidden min-w-[140px] animate-in fade-in zoom-in-95 duration-100" style={{ left: activeMenu.x, top: activeMenu.y }} onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
                         <button onClick={() => { const conn = getConnectionById(activeMenu.id); if (conn) onConnectionUpdate(activeMenu.id, { shape: conn.shape === 'straight' ? 'bezier' : 'straight' }); setActiveMenu(null); }} className="flex items-center gap-3 px-4 py-2.5 text-xs hover:bg-black/5 dark:hover:bg-white/10 text-gray-700 dark:text-gray-200 w-full text-left font-medium"><Spline size={14} /><span>{getConnectionById(activeMenu.id)?.shape === 'straight' ? '곡선으로 변경' : '직선으로 변경'}</span></button>
                         <button onClick={() => { const conn = getConnectionById(activeMenu.id); if (conn) onConnectionUpdate(activeMenu.id, { style: conn.style === 'dashed' ? 'solid' : 'dashed' }); setActiveMenu(null); }} className="flex items-center gap-3 px-4 py-2.5 text-xs hover:bg-black/5 dark:hover:bg-white/10 text-gray-700 dark:text-gray-200 w-full text-left font-medium"><Activity size={14} /><span>{getConnectionById(activeMenu.id)?.style === 'dashed' ? '실선으로 변경' : '점선으로 변경'}</span></button>
                         <div className="h-[1px] bg-gray-200 dark:bg-white/10 my-1 mx-2"></div>
                         <button onClick={() => { onConnectionDelete(activeMenu.id); setActiveMenu(null); }} className="flex items-center gap-3 px-4 py-2.5 text-xs hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 dark:text-red-400 w-full text-left font-medium"><Trash2 size={14} /><span>삭제</span></button>
                     </div>
                 )}
+
                 {backgroundMenu && (
-                    <div
-                        className="absolute z-[100] glass-card rounded-2xl overflow-hidden min-w-[180px] animate-in fade-in zoom-in-95 duration-100"
-                        style={{ left: backgroundMenu.x, top: backgroundMenu.y }}
-                        onClick={(evt) => evt.stopPropagation()}
-                        onPointerDown={(evt) => evt.stopPropagation()}
-                        onMouseDown={(evt) => evt.stopPropagation()}
-                        onContextMenu={(evt) => { evt.preventDefault(); evt.stopPropagation(); }}
-                    >
-                        <button
-                            onClick={handleCreateTaskFromMenu}
-                            disabled={isCreatingTask}
-                            className="flex items-center gap-3 px-4 py-3 text-xs hover:bg-black/5 dark:hover:bg-white/10 text-gray-700 dark:text-gray-200 w-full text-left font-medium disabled:opacity-50"
-                        >
-                            {isCreatingTask ? (
-                                <Loader2 size={16} className="animate-spin text-blue-500" />
-                            ) : (
-                                <FilePlus size={16} className="text-blue-500" />
-                            )}
+                    <div className="absolute z-[100] glass-card rounded-2xl overflow-hidden min-w-[180px] animate-in fade-in zoom-in-95 duration-100" style={{ left: backgroundMenu.x, top: backgroundMenu.y }} onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); }}>
+                        <button onClick={() => { handleCreateNewTask(backgroundMenu.taskX, backgroundMenu.taskY); setBackgroundMenu(null); }} disabled={isCreatingTask} className="flex items-center gap-3 px-4 py-3 text-xs hover:bg-black/5 dark:hover:bg-white/10 text-gray-700 dark:text-gray-200 w-full text-left font-medium disabled:opacity-50">
+                            {isCreatingTask ? <Loader2 size={16} className="animate-spin text-blue-500" /> : <FilePlus size={16} className="text-blue-500" />}
                             <span>새로운 카드 추가</span>
                         </button>
                         {backgroundMenu.targetTaskId && (
-                            <button
-                                onClick={() => handleDeleteTask(backgroundMenu.targetTaskId!)}
-                                disabled={isDeletingTask}
-                                className="flex items-center gap-3 px-4 py-3 text-xs hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 dark:text-red-400 w-full text-left font-medium disabled:opacity-50"
-                            >
-                                {isDeletingTask ? (
-                                    <Loader2 size={16} className="animate-spin" />
-                                ) : (
-                                    <Trash2 size={16} />
-                                )}
+                            <button onClick={() => handleDeleteTask(backgroundMenu.targetTaskId!)} disabled={isDeletingTask} className="flex items-center gap-3 px-4 py-3 text-xs hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 dark:text-red-400 w-full text-left font-medium disabled:opacity-50">
+                                {isDeletingTask ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
                                 <span>카드 삭제</span>
                             </button>
                         )}
-                        <button disabled className="flex items-center gap-3 px-4 py-3 text-xs hover:bg-black/5 dark:hover:bg-white/10 text-gray-400 cursor-not-allowed w-full text-left font-medium border-t border-gray-200 dark:border-white/10">
-                            <Clipboard size={16} /><span>붙여넣기</span>
-                        </button>
+                        <button disabled className="flex items-center gap-3 px-4 py-3 text-xs hover:bg-black/5 dark:hover:bg-white/10 text-gray-400 cursor-not-allowed w-full text-left font-medium border-t border-gray-200 dark:border-white/10"><Clipboard size={16} /><span>붙여넣기</span></button>
                     </div>
                 )}
             </div>
 
-            <button
-                onClick={() => fileInputRef.current?.click()}
-                className="absolute bottom-8 right-8 w-16 h-16 bg-blue-500 hover:bg-blue-600 text-white rounded-full shadow-[0_8px_30px_rgba(59,130,246,0.4)] transition-all duration-300 hover:scale-110 active:scale-95 flex items-center justify-center z-40 group backdrop-blur-sm border border-white/20"
-            >
+            <button onClick={() => fileInputRef.current?.click()} className="absolute bottom-8 right-8 w-16 h-16 bg-blue-500 hover:bg-blue-600 text-white rounded-full shadow-[0_8px_30px_rgba(59,130,246,0.4)] transition-all duration-300 hover:scale-110 active:scale-95 flex items-center justify-center z-40 group backdrop-blur-sm border border-white/20">
                 <Plus size={36} strokeWidth={2.5} className="group-hover:rotate-90 transition-transform duration-300" />
             </button>
 
-            <input type="file" multiple ref={fileInputRef} className="hidden" onChange={handleGlobalFileChange} />
-            <input type="file" multiple ref={taskFileInputRef} className="hidden" onChange={handleTaskFileChange} />
+            <input type="file" multiple ref={fileInputRef} className="hidden" onChange={(e) => { /* handleGlobalFileChange */ }} />
+            <input type="file" multiple ref={taskFileInputRef} className="hidden" onChange={(e) => { /* handleTaskFileChange */ }} />
         </div>
     );
 };
