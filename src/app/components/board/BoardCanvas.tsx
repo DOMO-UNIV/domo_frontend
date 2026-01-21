@@ -1,11 +1,11 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
-import { Task, Connection, Board, Group, TaskFile } from '../../../types';
+import { Task, Connection, Board, Group, TaskFile, AuthUser } from '../../../types';
 import { TaskCard } from '../ui/TaskCard';
 import {
     Plus, LayoutDashboard, ChevronDown, Check, Pencil, X, MousePointer2, Layers, Spline, Activity, Trash2, FilePlus, Clipboard,
-    Grid, Sun, Moon, Loader2
+    Grid, Sun, Moon, Loader2, LogOut, User, Settings
 } from 'lucide-react';
 
 interface BoardCanvasProps {
@@ -28,13 +28,18 @@ interface BoardCanvasProps {
     onGroupsUpdate: (groups: Group[]) => void;
     onToggleGrid: () => void;
     onToggleTheme: () => void;
+    user: AuthUser;
+    onLogout: () => void;
+    onOpenSettings: (tab?: 'profile' | 'preferences') => void;
 }
 
 export const BoardCanvas: React.FC<BoardCanvasProps> = ({
-                                                            tasks, connections, onTasksUpdate, onTaskSelect, onTaskCreate, onTaskUpdate, onConnectionCreate, onConnectionDelete, onConnectionUpdate, boards, activeBoardId, onSwitchBoard, onAddBoard, onRenameBoard, snapToGrid, groups, onGroupsUpdate, onToggleGrid, onToggleTheme
-                                                        }) => {
+    tasks, connections, onTasksUpdate, onTaskSelect, onTaskCreate, onTaskUpdate, onConnectionCreate, onConnectionDelete, onConnectionUpdate, boards, activeBoardId, onSwitchBoard, onAddBoard, onRenameBoard, snapToGrid, groups, onGroupsUpdate, onToggleGrid, onToggleTheme, user, onLogout, onOpenSettings
+}) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const boardSelectorRef = useRef<HTMLDivElement>(null);
+    const profileMenuRef = useRef<HTMLDivElement>(null);
+    const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const taskFileInputRef = useRef<HTMLInputElement>(null);
     const [activeTaskForFile, setActiveTaskForFile] = useState<number | null>(null);
@@ -72,6 +77,21 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
             resetBoardMenuState();
         }
     }, [showBoardMenu, resetBoardMenuState]);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (profileMenuRef.current && !profileMenuRef.current.contains(event.target as Node)) {
+                setIsProfileMenuOpen(false);
+            }
+        };
+
+        if (isProfileMenuOpen) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [isProfileMenuOpen]);
 
     const updateConnections = useCallback(() => {
         if (!containerRef.current) return;
@@ -660,6 +680,67 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                             <Sun size={18} className="hidden dark:block" />
                             <Moon size={18} className="block dark:hidden" />
                         </button>
+                    </div>
+
+                    <div className="h-6 w-[1px] bg-gray-300 dark:bg-white/10"></div>
+
+                    <div className="hidden md:flex items-center gap-3 pl-1 pr-2 py-1 bg-white/40 dark:bg-white/5 rounded-full border border-white/20 backdrop-blur-sm relative" ref={profileMenuRef}>
+                        <div
+                            className="flex items-center gap-2 cursor-pointer hover:bg-white/30 dark:hover:bg-white/10 p-1 rounded-full transition-colors"
+                            onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
+                        >
+                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold shadow-sm">
+                                {user.name.slice(0, 2)}
+                            </div>
+                            <div className="flex flex-col mr-2">
+                                <span className="text-xs font-bold text-gray-900 dark:text-gray-100">{user.name}</span>
+                                <span className="text-[10px] text-gray-500 dark:text-gray-400">{user.email}</span>
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
+                            className="p-1.5 rounded-full hover:bg-black/5 dark:hover:bg-white/10 text-gray-400 transition-colors"
+                        >
+                            <ChevronDown size={14} className={`transition-transform duration-200 ${isProfileMenuOpen ? 'rotate-180' : ''}`} />
+                        </button>
+
+                        {/* Profile Dropdown Menu */}
+                        {isProfileMenuOpen && (
+                            <div className="absolute top-full right-0 mt-2 w-48 bg-white dark:bg-[#16181D] rounded-xl shadow-xl border border-gray-200 dark:border-gray-800 overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-100 origin-top-right">
+                                <div className="p-2 space-y-0.5">
+                                    <button
+                                        onClick={() => {
+                                            onOpenSettings('profile');
+                                            setIsProfileMenuOpen(false);
+                                        }}
+                                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg transition-colors text-left"
+                                    >
+                                        <User size={16} />
+                                        <span>프로필</span>
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            onOpenSettings('preferences');
+                                            setIsProfileMenuOpen(false);
+                                        }}
+                                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg transition-colors text-left"
+                                    >
+                                        <Settings size={16} />
+                                        <span>환경설정</span>
+                                    </button>
+                                </div>
+                                <div className="h-px bg-gray-100 dark:bg-gray-800 my-0.5"></div>
+                                <div className="p-2">
+                                    <button
+                                        onClick={onLogout}
+                                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors text-left"
+                                    >
+                                        <LogOut size={16} />
+                                        <span>로그아웃</span>
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

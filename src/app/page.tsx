@@ -3,8 +3,8 @@
 
 import { useState } from "react";
 import { LoginScreen } from "./components/LoginScreen";
-import { ProjectSelect } from "@/src/app/components/ui/ProjectSelect.tsx";
-import { WorkspaceBoard } from "@/src/app/components/board/WorkspaceBoard.tsx";
+import { ProjectSelect } from "@/src/app/components/ui/ProjectSelect";
+import { WorkspaceBoard } from "@/src/app/components/board/WorkspaceBoard";
 import type { Project, AuthUser } from "../types/index";
 
 export default function Home() {
@@ -50,6 +50,8 @@ export default function Home() {
             <WorkspaceBoard
                 project={selectedProject}
                 onBack={handleBackToProjects}
+                user={user}
+                onLogout={handleLogout}
             />
         </div>
     );
