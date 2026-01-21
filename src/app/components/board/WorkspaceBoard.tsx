@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Project, Task, Connection, Board, Group, ViewMode } from '@/src/types';
+import { Project, Task, Connection, Board, Group, ViewMode, AuthUser } from '@/src/types';
 import { BoardCanvas } from './BoardCanvas';
 import { CalendarView, TimelineView, SettingsView } from './Views';
 import { TaskDetailModal } from '../ui/TaskDetailModal';
@@ -24,15 +24,18 @@ import {
 interface WorkspaceBoardProps {
     project: Project;
     onBack: () => void;
+    user: AuthUser;
+    onLogout: () => void;
 }
 
-export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack }) => {
+export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack, user, onLogout }) => {
     const [tasks, setTasks] = useState<Task[]>([]);
     const [connections, setConnections] = useState<Connection[]>([]);
     const [boards, setBoards] = useState<Board[]>([{ id: 1, title: '메인 보드' }]);
     const [activeBoardId, setActiveBoardId] = useState<number>(1);
     const [groups, setGroups] = useState<Group[]>([]);
     const [viewMode, setViewMode] = useState<ViewMode>('board');
+    const [settingsTab, setSettingsTab] = useState<'profile' | 'preferences'>('profile');
     const [selectedTask, setSelectedTask] = useState<Task | null>(null);
     const [snapToGrid, setSnapToGrid] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -296,11 +299,17 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
                             }}
                             onToggleGrid={() => setSnapToGrid(!snapToGrid)}
                             onToggleTheme={() => document.documentElement.classList.toggle('dark')}
+                            user={user}
+                            onLogout={onLogout}
+                            onOpenSettings={(tab) => {
+                                if (tab) setSettingsTab(tab);
+                                setViewMode('settings');
+                            }}
                         />
                     )}
                     {viewMode === 'calendar' && <CalendarView tasks={tasks} onTaskSelect={setSelectedTask} />}
                     {viewMode === 'timeline' && <TimelineView tasks={tasks} onTaskSelect={setSelectedTask} />}
-                    {viewMode === 'settings' && <SettingsView />}
+                    {viewMode === 'settings' && <SettingsView initialTab={settingsTab} />}
                 </div>
             </div>
 
