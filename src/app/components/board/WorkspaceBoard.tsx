@@ -6,6 +6,8 @@ import { BoardCanvas } from './BoardCanvas';
 import { CalendarView, TimelineView, SettingsView } from './Views';
 import { TaskDetailModal } from '../ui/TaskDetailModal';
 import { Mascot } from '../ui/Mascot';
+import { Dock } from '../dock/Dock';
+import { MOCK_MEMBERS } from '@/src/lib/api/mock-data';
 
 import {
     getTasks,
@@ -36,6 +38,10 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
     const [selectedTask, setSelectedTask] = useState<Task | null>(null);
     const [snapToGrid, setSnapToGrid] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(true);
+
+    // Dock 관련 상태
+    const [activeDockMenu, setActiveDockMenu] = useState('dashboard');
+    const [showMembers, setShowMembers] = useState(false);
 
     // 로딩 & 에러 상태
     const [isLoading, setIsLoading] = useState(true);
@@ -77,7 +83,6 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
     const handleTaskCreate = async (taskData: Partial<Task>) => {
         const columnId = taskData.column_id || 1;
 
-        // 필수 필드들을 명시적으로 설정
         const newTaskData: Omit<Task, 'id'> = {
             title: taskData.title || '새로운 카드',
             status: taskData.status || 'todo',
@@ -111,7 +116,6 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
 
     // 태스크 업데이트 핸들러
     const handleTaskUpdate = async (taskId: number, updates: Partial<Task>) => {
-        // 낙관적 업데이트
         const previousTasks = [...tasks];
         setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...updates } : t));
 
@@ -119,7 +123,6 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
             await updateTask(taskId, updates);
         } catch (err) {
             console.error('Failed to update task:', err);
-            // 롤백
             setTasks(previousTasks);
             throw err;
         }
@@ -135,7 +138,6 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
             shape: 'bezier'
         };
 
-        // 낙관적 업데이트
         const tempId = Date.now();
         setConnections(prev => [...prev, { ...newConnection, id: tempId }]);
 
@@ -146,7 +148,6 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
             );
         } catch (err) {
             console.error('Failed to create connection:', err);
-            // 롤백
             setConnections(prev => prev.filter(c => c.id !== tempId));
         }
     };
@@ -304,6 +305,18 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
                 </div>
             </div>
 
+            {/* Dock 컴포넌트 */}
+            <Dock
+                activeMenu={activeDockMenu}
+                onMenuChange={setActiveDockMenu}
+                editingCards={[]}
+                members={MOCK_MEMBERS}
+                showMembers={showMembers}
+                setShowMembers={setShowMembers}
+                projectId={project.id}
+                currentUserId={1}
+            />
+
             {selectedTask && (
                 <TaskDetailModal
                     task={selectedTask}
@@ -313,6 +326,7 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
                         setSelectedTask(updated);
                     }}
                     currentUser="User"
+                    currentUserId={1}
                 />
             )}
         </div>
