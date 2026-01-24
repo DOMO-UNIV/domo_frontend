@@ -96,6 +96,11 @@ interface BackendConnectionResponse {
   boardId: number;
   style: string;
   shape: string;
+  // 백엔드가 snake_case 또는 camelCase로 보낼 수 있음
+  sourceHandle?: string;
+  targetHandle?: string;
+  source_handle?: string;
+  target_handle?: string;
 }
 
 // ============================================
@@ -387,13 +392,18 @@ export async function updateGroup(
 
   // 백엔드 스키마에 맞게 변환 (camelCase → snake_case alias)
   const payload: Record<string, unknown> = {};
-  
+
   if (updates.title !== undefined) payload.title = updates.title;
   if (updates.x !== undefined) payload.localX = updates.x;
   if (updates.y !== undefined) payload.localY = updates.y;
   if (updates.width !== undefined) payload.width = updates.width;
   if (updates.height !== undefined) payload.height = updates.height;
-  if (updates.parentId !== undefined) payload.parentId = updates.parentId;
+
+  // ✅ parentId는 null을 명시적으로 전송해야 함 (최상위 그룹으로 분리할 때)
+  if ('parentId' in updates) {
+    payload.parentId = updates.parentId ?? null; // undefined는 null로 변환
+  }
+
   if (updates.depth !== undefined) payload.depth = updates.depth;
   if (updates.color !== undefined) payload.color = updates.color;
   if (updates.collapsed !== undefined) payload.collapsed = updates.collapsed;
@@ -609,7 +619,7 @@ export async function createTask(
       boardId: projectId,
       status: task.status || 'todo',
     } as Task;
-    
+
     addMockTask(newTask);
     return newTask;
   }
@@ -659,7 +669,13 @@ export async function updateTask(
   if (updates.description !== undefined) payload.content = updates.description;
   if (updates.x !== undefined) payload.x = updates.x;
   if (updates.y !== undefined) payload.y = updates.y;
-  if (updates.column_id !== undefined) payload.column_id = updates.column_id;
+
+  // ✅ column_id는 null을 명시적으로 전송해야 함 (그룹에서 분리할 때)
+  // updates 객체에 column_id 키가 있으면 (undefined가 아닌 값으로 설정되었으면) 전송
+  if ('column_id' in updates) {
+    payload.column_id = updates.column_id ?? null; // undefined는 null로 변환
+  }
+
   if (updates.assignees !== undefined) {
     payload.assignee_ids = updates.assignees.map(a => a.id);
   }
@@ -802,6 +818,9 @@ export async function getConnections(projectId: number): Promise<Connection[]> {
     boardId: conn.boardId,
     style: conn.style as 'solid' | 'dashed',
     shape: conn.shape as 'bezier' | 'straight',
+    // 백엔드가 snake_case로 보내면 변환
+    sourceHandle: (conn.sourceHandle || conn.source_handle || 'right') as 'left' | 'right' | 'top' | 'bottom',
+    targetHandle: (conn.targetHandle || conn.target_handle || 'left') as 'left' | 'right' | 'top' | 'bottom',
   }));
 }
 
@@ -822,14 +841,15 @@ export async function createConnection(
     return newConnection;
   }
 
-  // 백엔드는 from_card_id, to_card_id로 받음 (alias: from, to)
   const response = await apiFetch<BackendConnectionResponse>(`/cards/connections`, {
     method: 'POST',
     body: JSON.stringify({
-      from: connection.from,  // 백엔드 스키마에서 alias="from"으로 받음
-      to: connection.to,      // 백엔드 스키마에서 alias="to"로 받음
+      from: connection.from,
+      to: connection.to,
       style: connection.style || 'solid',
       shape: connection.shape || 'bezier',
+      sourceHandle: connection.sourceHandle || 'right',
+      targetHandle: connection.targetHandle || 'left',
     }),
   });
 
@@ -840,6 +860,8 @@ export async function createConnection(
     boardId: response.boardId || projectId,
     style: response.style as 'solid' | 'dashed',
     shape: response.shape as 'bezier' | 'straight',
+    sourceHandle: (response.sourceHandle || response.source_handle || 'right') as 'left' | 'right' | 'top' | 'bottom',
+    targetHandle: (response.targetHandle || response.target_handle || 'left') as 'left' | 'right' | 'top' | 'bottom',
   };
 }
 

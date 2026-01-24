@@ -145,6 +145,8 @@ export interface Connection {
   shape?: 'bezier' | 'straight';
   style?: 'solid' | 'dashed';
   boardId?: number;
+  sourceHandle?: 'left' | 'right' | 'top' | 'bottom';
+  targetHandle?: 'left' | 'right' | 'top' | 'bottom';
 }
 
 export interface Group {
@@ -318,6 +320,8 @@ export interface BackendCardConnectionResponse {
   boardId: number;
   style: string;
   shape: string;
+  sourceHandle?: string;
+  targetHandle?: string;
 }
 
 // ============================================

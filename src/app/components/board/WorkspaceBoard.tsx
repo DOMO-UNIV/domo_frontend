@@ -20,6 +20,8 @@ import {
     deleteTask,
     createConnection,
     deleteConnection,
+    updateGroup,
+    deleteGroup,
 } from '@/src/lib/api';
 
 import {
@@ -365,17 +367,25 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
     // 연결선 핸들러
     // =========================================
 
-    const handleConnectionCreate = useCallback(async (from: number, to: number): Promise<Connection> => {
+    const handleConnectionCreate = useCallback(async (
+        from: number,
+        to: number,
+        sourceHandle?: 'left' | 'right',
+        targetHandle?: 'left' | 'right'
+    ): Promise<Connection> => {
         const newConnection: Omit<Connection, 'id'> = {
             from,
             to,
             boardId: project.id,
             style: 'solid',
             shape: 'bezier',
+            sourceHandle: sourceHandle || 'right',
+            targetHandle: targetHandle || 'left',
         };
 
         try {
             const created = await createConnection(project.id, newConnection);
+            console.log('✅ Created connection:', created);
             setConnections(prev => [...prev, created]);
             return created;
         } catch (err) {
@@ -431,11 +441,18 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
     // 그룹 핸들러 (그룹 내 카드도 함께 이동)
     // =========================================
 
-    // ✅ 그룹 업데이트 - 새 그룹 생성 시 백엔드에 컬럼 생성 + 카드들 연결
+    // ✅ 그룹 업데이트 - 새 그룹 생성 및 parent_id 변경 시 백엔드 동기화
     const handleGroupsUpdate = useCallback(async (newGroups: Group[]) => {
-        // 새로 추가된 그룹 찾기 (기존 groups에 없는 것)
+        console.log('🔄 handleGroupsUpdate called:', newGroups.map(g => ({ id: g.id, collapsed: g.collapsed, parentId: g.parentId })));
+        // 1. 새로 추가된 그룹 찾기 (기존 groups에 없는 것)
         const existingIds = new Set(groups.map(g => g.id));
         const addedGroups = newGroups.filter(g => !existingIds.has(g.id));
+
+        // 2. parent_id가 변경된 그룹 찾기
+        const parentChangedGroups = newGroups.filter(g => {
+            const existingGroup = groups.find(eg => eg.id === g.id);
+            return existingGroup && existingGroup.parentId !== g.parentId;
+        });
 
         // 새 그룹이 있으면 백엔드에 컬럼 생성
         for (const newGroup of addedGroups) {
@@ -488,57 +505,92 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
             }
         }
 
+        // ✅ parent_id가 변경된 그룹들 백엔드에 업데이트
+        for (const changedGroup of parentChangedGroups) {
+            try {
+                await updateGroup(changedGroup.id, {
+                    parentId: changedGroup.parentId,
+                    depth: changedGroup.depth,
+                });
+                console.log(`✅ Group ${changedGroup.id} parent_id updated to:`, changedGroup.parentId);
+            } catch (err) {
+                console.error('❌ Failed to update group parent_id:', changedGroup.id, err);
+            }
+        }
+
         setGroups(newGroups);
+        console.log('✅ setGroups done');
     }, [groups, columns, tasks, project.id]);
 
-    // ✅ 그룹 이동 시 내부 카드들의 컬럼도 변경
+    // ✅ 그룹 이동 핸들러 - 그룹의 위치와 parent_id만 업데이트
+    // 중요: 그룹 이동 시 내부 카드들의 column_id는 변경하지 않음!
+    // 카드의 column_id는 카드를 직접 드래그해서 분리할 때만 변경됨
     const handleGroupMove = useCallback(async (groupId: number, newX: number, newY: number) => {
         const group = groups.find(g => g.id === groupId);
         if (!group) return;
 
-        // 그룹 내 카드들 찾기
-        const groupTasks = tasks.filter(t => {
-            const tx = t.x || 0;
-            const ty = t.y || 0;
-            return tx >= group.x && tx <= group.x + group.width &&
-                ty >= group.y && ty <= group.y + group.height;
-        });
+        // 그룹 위치 업데이트 (로컬 상태)
+        setGroups(prev => prev.map(g =>
+            g.id === groupId ? { ...g, x: newX, y: newY } : g
+        ));
+
+        // ✅ 그룹 내 카드들의 위치만 업데이트 (column_id는 변경하지 않음!)
+        const groupTasks = tasks.filter(t => t.column_id === groupId);
 
         // 이동량 계산
         const deltaX = newX - group.x;
         const deltaY = newY - group.y;
 
-        // 새 위치 기준으로 컬럼 찾기
-        const newColumn = getColumnByXPosition(newX + group.width / 2);
-
-        // 그룹 위치 업데이트
-        setGroups(prev => prev.map(g =>
-            g.id === groupId ? { ...g, x: newX, y: newY } : g
-        ));
-
-        // 그룹 내 카드들 위치 및 컬럼 업데이트
+        // 그룹 내 카드들 위치 업데이트 (column_id는 유지!)
         for (const task of groupTasks) {
             const newTaskX = (task.x || 0) + deltaX;
             const newTaskY = (task.y || 0) + deltaY;
 
+            // 위치만 업데이트, column_id는 변경하지 않음!
             const updates: Partial<Task> = {
                 x: newTaskX,
                 y: newTaskY,
             };
 
-            // 컬럼이 변경되었으면 column_id도 업데이트
-            if (newColumn && newColumn.id !== task.column_id) {
-                updates.column_id = newColumn.id;
-                updates.status = newColumn.status;
-            }
-
             try {
                 await handleTaskUpdate(task.id, updates);
             } catch (err) {
-                console.error('Failed to update task in group:', task.id, err);
+                console.error('Failed to update task position in group:', task.id, err);
             }
         }
-    }, [groups, tasks, getColumnByXPosition, handleTaskUpdate]);
+
+        // 백엔드에 그룹 위치 업데이트 (parent_id 포함 - BoardCanvas에서 이미 처리됨)
+        // 그룹의 parent_id는 BoardCanvas의 handlePointerUp에서 처리됨
+        console.log(`📦 Group ${groupId} moved to (${newX}, ${newY})`);
+    }, [groups, tasks, handleTaskUpdate]);
+
+    // ✅ 그룹 삭제 핸들러
+    const handleGroupDelete = useCallback(async (groupId: number) => {
+        const group = groups.find(g => g.id === groupId);
+        if (!group) return;
+
+        if (!confirm(`'${group.title}' 그룹을 삭제하시겠습니까?\n(카드들은 보드에 남아있습니다)`)) {
+            return;
+        }
+
+        try {
+            await deleteGroup(groupId);
+
+            // 로컬 상태 업데이트
+            setGroups(prev => prev.filter(g => g.id !== groupId));
+            setColumns(prev => prev.filter(c => c.id !== groupId));
+
+            // 그룹에 속했던 카드들의 column_id를 null로
+            setTasks(prev => prev.map(t =>
+                t.column_id === groupId ? { ...t, column_id: undefined } : t
+            ));
+
+            console.log(`✅ Group ${groupId} deleted`);
+        } catch (err) {
+            console.error('❌ Failed to delete group:', err);
+            alert('그룹 삭제에 실패했습니다.');
+        }
+    }, [groups]);
 
     // =========================================
     // 기타 핸들러
@@ -603,6 +655,8 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
     const filteredConnections = connections.filter(c =>
         c.boardId === activeBoardId || c.boardId === project.id || activeBoardId === 1
     );
+
+    console.log('🔗 connections:', connections, 'filtered:', filteredConnections, 'activeBoardId:', activeBoardId, 'project.id:', project.id);
 
     const filteredGroups = groups.filter(g =>
         g.projectId === activeBoardId || g.projectId === project.id || activeBoardId === 1
@@ -730,6 +784,7 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
                             groups={filteredGroups}
                             onGroupsUpdate={handleGroupsUpdate}
                             onGroupMove={handleGroupMove}
+                            onGroupDelete={handleGroupDelete}
                             onToggleGrid={handleToggleGrid}
                             onToggleTheme={handleToggleTheme}
                         />

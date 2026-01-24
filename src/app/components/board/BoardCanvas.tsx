@@ -21,7 +21,8 @@ interface BoardCanvasProps {
     onTaskUpdate?: (taskId: number, updates: Partial<Task>) => Promise<void>;
     onTaskDelete?: (taskId: number) => Promise<void>;
     onMoveTaskToColumn?: (taskId: number, columnId: number) => Promise<void>;
-    onConnectionCreate: (from: number, to: number) => void;
+    // ✅ [수정] handle 정보 추가
+    onConnectionCreate: (from: number, to: number, sourceHandle?: 'left' | 'right', targetHandle?: 'left' | 'right') => void;
     onConnectionDelete: (id: number) => void;
     onConnectionUpdate: (id: number, updates: Partial<Connection>) => void;
     boards: Board[];
@@ -33,6 +34,7 @@ interface BoardCanvasProps {
     groups: Group[];
     onGroupsUpdate: (groups: Group[]) => void;
     onGroupMove?: (groupId: number, newX: number, newY: number) => Promise<void>;
+    onGroupDelete?: (groupId: number) => Promise<void>;
     onToggleGrid: () => void;
     onToggleTheme: () => void;
 }
@@ -52,7 +54,7 @@ const GRID_CONFIG: Partial<GridConfig> = {
 };
 
 export const BoardCanvas: React.FC<BoardCanvasProps> = ({
-                                                            tasks, connections, columns, onTasksUpdate, onTaskSelect, onTaskCreate, onTaskUpdate, onTaskDelete, onMoveTaskToColumn, onConnectionCreate, onConnectionDelete, onConnectionUpdate, boards, activeBoardId, onSwitchBoard, onAddBoard, onRenameBoard, snapToGrid, groups, onGroupsUpdate, onGroupMove, onToggleGrid, onToggleTheme
+                                                            tasks, connections, columns, onTasksUpdate, onTaskSelect, onTaskCreate, onTaskUpdate, onTaskDelete, onMoveTaskToColumn, onConnectionCreate, onConnectionDelete, onConnectionUpdate, boards, activeBoardId, onSwitchBoard, onAddBoard, onRenameBoard, snapToGrid, groups, onGroupsUpdate, onGroupMove, onGroupDelete, onToggleGrid, onToggleTheme
                                                         }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const boardSelectorRef = useRef<HTMLDivElement>(null);
@@ -78,7 +80,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         containedChildGroups: { id: number, initialX: number, initialY: number }[]
     } | null>(null);
 
-    const [connectionDraft, setConnectionDraft] = useState<{ fromId: number, startX: number, startY: number, currX: number, currY: number } | null>(null);
+    const [connectionDraft, setConnectionDraft] = useState<{ fromId: number, startX: number, startY: number, currX: number, currY: number, sourceHandle: 'left' | 'right' } | null>(null);
     const [activeMenu, setActiveMenu] = useState<{ id: number, x: number, y: number } | null>(null);
     const [backgroundMenu, setBackgroundMenu] = useState<{ x: number, y: number, taskX: number, taskY: number, targetTaskId?: number } | null>(null);
     const [selectionBox, setSelectionBox] = useState<{ startX: number, startY: number, currX: number, currY: number } | null>(null);
@@ -281,19 +283,19 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
 
     const handleCreateNewTask = async (x: number, y: number) => {
         if (isCreatingTask) return;
-        const targetColumn = getColumnByX(x);
+        // 카드 생성 시 자동으로 그룹에 귀속시키지 않음 (자유 배치)
         const newTaskData: Partial<Task> = {
             title: "새로운 카드",
-            status: targetColumn?.status || "todo",
+            status: "todo",
             x, y,
             tags: [],
             boardId: activeBoardId,
-            column_id: targetColumn?.id,
+            column_id: undefined,  // 자유 배치 (그룹에 귀속 안 함)
         };
 
         if (onTaskCreate) {
             setIsCreatingTask(true);
-            const tempTask: Task = { ...newTaskData, id: Date.now(), status: targetColumn?.status || 'todo', x, y, boardId: activeBoardId } as Task;
+            const tempTask: Task = { ...newTaskData, id: Date.now(), status: 'todo', x, y, boardId: activeBoardId } as Task;
             onTasksUpdate([...tasks, tempTask]);
             try {
                 const savedTask = await onTaskCreate(newTaskData);
@@ -452,20 +454,20 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         setBackgroundMenu(null);
     };
 
-    const handleConnectStart = (taskId: number, e: React.PointerEvent) => {
+    const handleConnectStart = (taskId: number, e: React.PointerEvent, handle: 'left' | 'right') => {
         if (!containerRef.current) return;
         const container = containerRef.current;
         const rect = container.getBoundingClientRect();
         const x = e.clientX - rect.left + container.scrollLeft;
         const y = e.clientY - rect.top + container.scrollTop;
-        setConnectionDraft({ fromId: taskId, startX: x, startY: y, currX: x, currY: y });
+        setConnectionDraft({ fromId: taskId, startX: x, startY: y, currX: x, currY: y, sourceHandle: handle });
         setActiveMenu(null);
         setBackgroundMenu(null);
     };
 
-    const handleConnectEnd = (targetId: number) => {
+    const handleConnectEnd = (targetId: number, handle: 'left' | 'right') => {
         if (connectionDraft && connectionDraft.fromId !== targetId) {
-            onConnectionCreate(connectionDraft.fromId, targetId);
+            onConnectionCreate(connectionDraft.fromId, targetId, connectionDraft.sourceHandle, handle);
         }
         setConnectionDraft(null);
     };
@@ -545,9 +547,9 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
     };
 
     const handlePointerUp = async () => {
-        // ✅ SortableGrid 드래그 종료
+        // ✅ SortableGrid 드래그 종료 - 현재 드래그 위치 전달
         if (dragContext) {
-            await endDrag();
+            await endDrag(sortableDragPos ?? undefined);
             setSortableDragPos(null);
             return;
         }
@@ -556,16 +558,54 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         if (freeDragState) {
             const task = tasks.find(t => t.id === freeDragState.id);
             if (task && (task.x !== freeDragState.initialTaskX || task.y !== freeDragState.initialTaskY) && task.x !== undefined && task.y !== undefined) {
-                await saveTaskPosition(freeDragState.id, task.x, task.y);
+                // ✅ 자유 배치 카드가 그룹 안에 드롭되면 column_id 설정
+                const targetGroup = groups.find(g => {
+                    const cardCenterX = task.x + 140; // 카드 중심점
+                    const cardCenterY = task.y + 60;
+                    return (
+                        cardCenterX >= g.x &&
+                        cardCenterX <= g.x + g.width &&
+                        cardCenterY >= g.y &&
+                        cardCenterY <= g.y + g.height
+                    );
+                });
+
+                if (targetGroup) {
+                    // 그룹 안에 드롭됨 - column_id 설정
+                    onTasksUpdate(tasks.map(t =>
+                        t.id === task.id ? { ...t, column_id: targetGroup.id } : t
+                    ));
+                    if (onTaskUpdate) {
+                        await onTaskUpdate(task.id, { column_id: targetGroup.id, x: task.x, y: task.y });
+                    }
+                } else {
+                    // 그룹 밖에 드롭됨 - 위치만 저장
+                    await saveTaskPosition(freeDragState.id, task.x, task.y);
+                }
             }
             setFreeDragState(null);
         }
         if (groupDragState) {
             const draggedGroup = groups.find(g => g.id === groupDragState.id);
             if (draggedGroup) {
+                // ✅ 그룹이 다른 그룹 안에 드롭되면 parent_id 설정
+                // 단, 자신의 자식 그룹 안에는 들어갈 수 없음 (순환 참조 방지)
+                const isDescendant = (parentId: number | null | undefined, targetId: number): boolean => {
+                    let current = parentId;
+                    while (current !== null && current !== undefined) {
+                        if (current === targetId) return true;
+                        const parentGroup = groups.find(g => g.id === current);
+                        current = parentGroup?.parentId;
+                    }
+                    return false;
+                };
+
                 const targetGroup = groups.find(g => {
                     if (g.id === groupDragState.id) return false;
                     if (g.parentId === groupDragState.id) return false;
+                    // 순환 참조 방지: 드래그 중인 그룹의 자손 그룹 안에는 들어갈 수 없음
+                    if (isDescendant(g.parentId, groupDragState.id)) return false;
+
                     const centerX = draggedGroup.x + draggedGroup.width / 2;
                     const centerY = draggedGroup.y + draggedGroup.height / 2;
                     return (
@@ -586,6 +626,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                     }));
                     console.log(`Group ${groupDragState.id} nested into Group ${targetGroup.id}`);
                 } else {
+                    // 그룹 밖으로 이동 - parent_id를 null로
                     if (draggedGroup.parentId) {
                         onGroupsUpdate(groups.map(g => {
                             if (g.id === groupDragState.id) {
@@ -634,7 +675,10 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
 
     // 그룹 접기/펴기 핸들러
     const handleGroupCollapse = useCallback((groupId: number, collapsed: boolean) => {
-        onGroupsUpdate(groups.map(g => g.id === groupId ? { ...g, collapsed } : g));
+        console.log('📦 handleGroupCollapse called:', { groupId, collapsed });
+        const updatedGroups = groups.map(g => g.id === groupId ? { ...g, collapsed } : g);
+        console.log('📦 Updated groups:', updatedGroups.map(g => ({ id: g.id, collapsed: g.collapsed })));
+        onGroupsUpdate(updatedGroups);
     }, [groups, onGroupsUpdate]);
 
     return (
@@ -690,6 +734,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                             onPointerDown={(e, g) => handlePointerDown(e, undefined, g)}
                             onTitleEdit={handleGroupTitleEdit}
                             onCollapse={handleGroupCollapse}
+                            onDelete={onGroupDelete}
                             gridConfig={gridConfig}
                         >
                             {/* 그룹 내 카드들 */}

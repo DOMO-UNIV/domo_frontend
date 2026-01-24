@@ -374,8 +374,9 @@ export function useSortableGrid(
 
     /**
      * 드래그 종료 - 카드 배치 확정
+     * @param currentDragPos - 드래그 종료 시점의 카드 위치 (그룹 밖 드롭 시 사용)
      */
-    const endDrag = useCallback(async () => {
+    const endDrag = useCallback(async (currentDragPos?: { x: number; y: number }) => {
         if (!dragContext) return;
 
         const task = tasksRef.current.find(t => t.id === dragContext.taskId);
@@ -424,8 +425,33 @@ export function useSortableGrid(
                 await onTaskMove(dragContext.taskId, dropPreview.groupId, dropPreview.index);
             }
         } else {
-            // 자유 배치 (그룹 밖)
-            // 현재 위치 유지 - 별도 처리 필요 시 여기에 추가
+            // ✅ 그룹 밖으로 드롭 - column_id를 null(undefined)로 설정하고 자유 배치
+            // currentDragPos가 제공되면 해당 위치 사용, 아니면 원래 위치 유지
+            const newX = currentDragPos?.x ?? task.x;
+            const newY = currentDragPos?.y ?? task.y;
+
+            // 기존에 그룹에 속해 있었는지 확인
+            const wasInGroup = task.column_id !== undefined && task.column_id !== null;
+
+            const updatedTasks = tasksRef.current.map(t => {
+                if (t.id === dragContext.taskId) {
+                    return {
+                        ...t,
+                        column_id: undefined, // 그룹에서 분리
+                        x: newX,
+                        y: newY,
+                    };
+                }
+                return t;
+            });
+
+            onTasksUpdate(updatedTasks);
+
+            // 백엔드 업데이트 (column_id = null로 분리)
+            // 그룹에 속해있었던 경우에만 API 호출
+            if (onTaskMove && wasInGroup) {
+                await onTaskMove(dragContext.taskId, null, -1);
+            }
         }
 
         resetDragState();

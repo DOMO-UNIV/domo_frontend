@@ -18,8 +18,8 @@ interface TaskCardProps {
     style?: React.CSSProperties;
     isSelected?: boolean;
     onPointerDown?: (e: React.PointerEvent) => void;
-    onConnectStart?: (taskId: number, e: React.PointerEvent) => void;
-    onConnectEnd?: (taskId: number) => void;
+    onConnectStart?: (taskId: number, e: React.PointerEvent, handle: 'left' | 'right') => void;
+    onConnectEnd?: (taskId: number, handle: 'left' | 'right') => void;
     onAttachFile?: (taskId: number) => void;
 }
 
@@ -139,15 +139,15 @@ export const TaskCard: React.FC<TaskCardProps> = ({
                     {/* Connection Handles */}
                     <div
                         className="absolute -left-2 top-1/2 -translate-y-1/2 w-4 h-4 bg-white border border-gray-300 rounded-full shadow-sm cursor-crosshair hover:scale-125 transition-transform opacity-0 group-hover:opacity-100 z-20 flex items-center justify-center group/handle"
-                        onPointerDown={(e) => { e.stopPropagation(); onConnectStart?.(task.id, e); }}
-                        onPointerUp={(e) => { e.stopPropagation(); onConnectEnd?.(task.id); }}
+                        onPointerDown={(e) => { e.stopPropagation(); onConnectStart?.(task.id, e, 'left'); }}
+                        onPointerUp={(e) => { e.stopPropagation(); onConnectEnd?.(task.id, 'left'); }}
                     >
                         <div className="w-1.5 h-1.5 bg-gray-400 rounded-full group-hover/handle:bg-domo-primary transition-colors"></div>
                     </div>
                     <div
                         className="absolute -right-2 top-1/2 -translate-y-1/2 w-4 h-4 bg-white border border-gray-300 rounded-full shadow-sm cursor-crosshair hover:scale-125 transition-transform opacity-0 group-hover:opacity-100 z-20 flex items-center justify-center group/handle"
-                        onPointerDown={(e) => { e.stopPropagation(); onConnectStart?.(task.id, e); }}
-                        onPointerUp={(e) => { e.stopPropagation(); onConnectEnd?.(task.id); }}
+                        onPointerDown={(e) => { e.stopPropagation(); onConnectStart?.(task.id, e, 'right'); }}
+                        onPointerUp={(e) => { e.stopPropagation(); onConnectEnd?.(task.id, 'right'); }}
                     >
                         <div className="w-1.5 h-1.5 bg-gray-400 rounded-full group-hover/handle:bg-domo-primary transition-colors"></div>
                     </div>
@@ -202,15 +202,15 @@ export const TaskCard: React.FC<TaskCardProps> = ({
                     {/* Connection Handles */}
                     <div
                         className="absolute -left-2 top-1/2 -translate-y-1/2 w-4 h-4 bg-white border border-gray-300 rounded-full shadow-sm cursor-crosshair hover:scale-125 transition-transform opacity-0 group-hover:opacity-100 z-20 flex items-center justify-center group/handle"
-                        onPointerDown={(e) => { e.stopPropagation(); onConnectStart?.(task.id, e); }}
-                        onPointerUp={(e) => { e.stopPropagation(); onConnectEnd?.(task.id); }}
+                        onPointerDown={(e) => { e.stopPropagation(); onConnectStart?.(task.id, e, 'left'); }}
+                        onPointerUp={(e) => { e.stopPropagation(); onConnectEnd?.(task.id, 'left'); }}
                     >
                         <div className="w-1.5 h-1.5 bg-gray-400 rounded-full group-hover/handle:bg-domo-primary transition-colors"></div>
                     </div>
                     <div
                         className="absolute -right-2 top-1/2 -translate-y-1/2 w-4 h-4 bg-white border border-gray-300 rounded-full shadow-sm cursor-crosshair hover:scale-125 transition-transform opacity-0 group-hover:opacity-100 z-20 flex items-center justify-center group/handle"
-                        onPointerDown={(e) => { e.stopPropagation(); onConnectStart?.(task.id, e); }}
-                        onPointerUp={(e) => { e.stopPropagation(); onConnectEnd?.(task.id); }}
+                        onPointerDown={(e) => { e.stopPropagation(); onConnectStart?.(task.id, e, 'right'); }}
+                        onPointerUp={(e) => { e.stopPropagation(); onConnectEnd?.(task.id, 'right'); }}
                     >
                         <div className="w-1.5 h-1.5 bg-gray-400 rounded-full group-hover/handle:bg-domo-primary transition-colors"></div>
                     </div>
@@ -268,7 +268,6 @@ export const TaskCard: React.FC<TaskCardProps> = ({
                 backgroundColor: (variant === 'sticky' && isCustomColor) ? task.color : undefined
             }}
         >
-            {/* ✅ 상태 변경 드롭다운 - 카드 우상단 */}
             {variant === 'sticky' && (
                 <div className="absolute -top-2 -right-2 z-30">
                     <button
@@ -413,15 +412,15 @@ export const TaskCard: React.FC<TaskCardProps> = ({
                 <>
                     <div
                         className="absolute -left-2 top-1/2 -translate-y-1/2 w-4 h-4 bg-white border border-gray-300 rounded-full shadow-sm cursor-crosshair hover:scale-125 transition-transform z-20 flex items-center justify-center group/handle"
-                        onPointerDown={(e) => { e.stopPropagation(); onConnectStart?.(task.id, e); }}
-                        onPointerUp={(e) => { e.stopPropagation(); onConnectEnd?.(task.id); }}
+                        onPointerDown={(e) => { e.stopPropagation(); onConnectStart?.(task.id, e, 'left'); }}
+                        onPointerUp={(e) => { e.stopPropagation(); onConnectEnd?.(task.id, 'left'); }}
                     >
                         <div className="w-1.5 h-1.5 bg-gray-400 rounded-full group-hover/handle:bg-domo-primary transition-colors"></div>
                     </div>
                     <div
                         className="absolute -right-2 top-1/2 -translate-y-1/2 w-4 h-4 bg-white border border-gray-300 rounded-full shadow-sm cursor-crosshair hover:scale-125 transition-transform z-20 flex items-center justify-center group/handle"
-                        onPointerDown={(e) => { e.stopPropagation(); onConnectStart?.(task.id, e); }}
-                        onPointerUp={(e) => { e.stopPropagation(); onConnectEnd?.(task.id); }}
+                        onPointerDown={(e) => { e.stopPropagation(); onConnectStart?.(task.id, e, 'right'); }}
+                        onPointerUp={(e) => { e.stopPropagation(); onConnectEnd?.(task.id, 'right'); }}
                     >
                         <div className="w-1.5 h-1.5 bg-gray-400 rounded-full group-hover/handle:bg-domo-primary transition-colors"></div>
                     </div>

@@ -8,7 +8,7 @@ console.log("Current Env Check:", {
 });
 
 export const API_CONFIG = {
-  BASE_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000/api',
+  BASE_URL: '/api' as string,  // 👈 as string 추가
   USE_MOCK: process.env.NEXT_PUBLIC_USE_MOCK === 'true',
 } as const;
 
@@ -24,8 +24,8 @@ interface FetchOptions extends RequestInit {
  * 기본 fetch 래퍼 - 공통 에러 처리 및 타임아웃 지원
  */
 export async function apiFetch<T>(
-  endpoint: string,
-  options: FetchOptions = {}
+    endpoint: string,
+    options: FetchOptions = {}
 ): Promise<T> {
   const { timeout = 10000, ...fetchOptions } = options;
 
@@ -45,7 +45,18 @@ export async function apiFetch<T>(
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.detail || `HTTP ${response.status} 에러`);
+
+      // detail이 배열이면 메시지 추출, 아니면 그대로 사용
+      let message: string;
+      if (Array.isArray(errorData.detail)) {
+        message = errorData.detail
+            .map((d: any) => `${d.loc?.join('.') || 'error'}: ${d.msg}`)
+            .join(', ');
+      } else {
+        message = errorData.detail || `HTTP ${response.status} 에러`;
+      }
+
+      throw new Error(message);
     }
 
     // 204 No Content 처리
@@ -68,9 +79,9 @@ export async function apiFetch<T>(
  * 파일 업로드용 fetch (multipart/form-data)
  */
 export async function apiUpload<T>(
-  endpoint: string,
-  formData: FormData,
-  options: Omit<FetchOptions, 'body'> = {}
+    endpoint: string,
+    formData: FormData,
+    options: Omit<FetchOptions, 'body'> = {}
 ): Promise<T> {
   const { timeout = 30000, ...fetchOptions } = options;
 
@@ -89,7 +100,18 @@ export async function apiUpload<T>(
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.detail || `HTTP ${response.status} 에러`);
+
+      // detail이 배열이면 메시지 추출, 아니면 그대로 사용
+      let message: string;
+      if (Array.isArray(errorData.detail)) {
+        message = errorData.detail
+            .map((d: any) => `${d.loc?.join('.') || 'error'}: ${d.msg}`)
+            .join(', ');
+      } else {
+        message = errorData.detail || `HTTP ${response.status} 에러`;
+      }
+
+      throw new Error(message);
     }
 
     return response.json();
