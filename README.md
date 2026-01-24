@@ -100,8 +100,8 @@ app/
 // 화면 흐름
 로그인 전    → LoginScreen / SignupScreen / VerifyEmailScreen
 로그인 후    → WorkspaceListScreen (워크스페이스 선택)
-           → ProjectSelectScreen (프로젝트 선택)
-           → BoardScreen (보드 작업)
+→ ProjectSelectScreen (프로젝트 선택)
+→ BoardScreen (보드 작업)
 ```
 
 ---
@@ -116,7 +116,7 @@ app/
 | `auth.ts` | 인증 | `login()`, `signup()`, `verify()`, `logout()`, `checkAuth()` |
 | `board.ts` | 보드/태스크 | `getTasks()`, `createTask()`, `updateTask()`, `deleteTask()` |
 | `workspace.ts` | 워크스페이스 | `getWorkspaces()`, `createWorkspace()`, `getProjects()` |
-| `file.ts` | 파일 관리 | `uploadFile()`, `deleteFile()`, `attachFileToCard()` |
+| `file.ts` | 파일 관리 | `getProjectFiles()`, `uploadFile()`, `deleteFile()`, `getFileVersions()`, `attachFileToCard()`, `detachFileFromCard()` |
 | `user.ts` | 사용자 | `getMyInfo()`, `updateMyInfo()`, `updateProfileImage()` |
 | `activity.ts` | 활동 로그 | `getMyActivities()` |
 | `schedule.ts` | 일정 | `getMySchedules()`, `getCommonFreeTime()` |
@@ -220,19 +220,25 @@ import { ProfileCard, SettingsView, ActivityList } from '@/src/views/profile';
 |------|------|
 | `Dock.tsx` | macOS 스타일 하단 독 (뷰 전환, 음성채팅, 멤버) |
 | `DockButton.tsx` | 독 버튼 컴포넌트 |
+| `FileListPanel.tsx` | 프로젝트 파일 목록 패널 (업로드, 삭제, 드래그&드롭) |
 | `index.ts` | Export |
 
 **사용:**
 ```typescript
-import { Dock, DockButton } from '@/src/views/dock';
+import { Dock, DockButton, FileListPanel } from '@/src/views/dock';
 ```
 
 #### 3.3.7 `views/common/` - 공통 UI
 
-```typescript
-import { Mascot } from '@/src/views/common';
+| 파일 | 역할 |
+|------|------|
+| `Mascot.tsx` | 마스코트 컴포넌트 |
+| `FileVersionDropdown.tsx` | 파일 버전 히스토리 드롭다운 (Portal 기반) |
+| `index.ts` | Export |
 
-<Mascot size={40} className="drop-shadow-lg" />
+**사용:**
+```typescript
+import { Mascot, FileVersionDropdown } from '@/src/views/common';
 ```
 
 ---
@@ -311,7 +317,28 @@ import { useSortableGrid } from '@/src/containers/hooks/board';
 | **Timeline** | `TimelineView` | 간트 차트 스타일 타임라인 |
 | **Settings** | `SettingsView` | 프로필 설정 + 환경설정 |
 
-### 4.3 실시간 음성 채팅 (WebRTC)
+### 4.3 파일 관리 시스템
+
+| 기능 | 설명 |
+|------|------|
+| **파일 목록 패널** | Dock 파일 버튼으로 토글, 프로젝트 파일 목록 표시 |
+| **파일 업로드** | 드래그&드롭 또는 버튼 클릭으로 업로드 |
+| **버전 관리** | 동일 파일명 업로드 시 자동 버전 업데이트 (v1, v2, ...) |
+| **버전 히스토리** | 다운로드 버튼 클릭 시 버전 목록에서 원하는 버전 선택 |
+| **카드 첨부** | 파일을 카드 위로 드래그하여 첨부 |
+| **파일 연결 해제** | 카드 상세에서 첨부 파일 연결 해제 |
+
+```
+┌─────────────────────┐     ┌──────────────────┐
+│ 프로젝트 파일       │     │ 버전 히스토리     │
+│                     │     │                  │
+│ 📄 기획서.pdf  [⬇]──┼────►│ v3 (최신) 1.2MB  │
+│ 📄 시안.png   [⬇]  │     │ v2 - 1.0MB       │
+│ 📄 회의록.docx [⬇] │     │ v1 - 0.8MB       │
+└─────────────────────┘     └──────────────────┘
+```
+
+### 4.4 실시간 음성 채팅 (WebRTC)
 
 ```
 ┌─────────────┐     WebSocket      ┌──────────────┐
@@ -335,7 +362,7 @@ import { useSortableGrid } from '@/src/containers/hooks/board';
 - 스피커 음소거 (Deafen)
 - 현재 음성 채팅 참여자 표시
 
-### 4.4 인증 & 권한
+### 4.5 인증 & 권한
 
 | 기능 | 설명 |
 |------|------|
@@ -352,71 +379,71 @@ import { useSortableGrid } from '@/src/containers/hooks/board';
 ```typescript
 // 사용자
 interface User {
-  id: number;
-  email: string;
-  name: string;
-  is_student_verified?: boolean;
-  profile_image?: string | null;
+    id: number;
+    email: string;
+    name: string;
+    is_student_verified?: boolean;
+    profile_image?: string | null;
 }
 
 // 워크스페이스 & 프로젝트
 interface Workspace {
-  id: number;
-  name: string;
-  description: string;
-  owner_id: number;
-  projects: Project[];
+    id: number;
+    name: string;
+    description: string;
+    owner_id: number;
+    projects: Project[];
 }
 
 interface Project {
-  id: number;
-  name: string;
-  workspace: string;
-  workspace_id?: number;
-  role: string;
-  progress: number;
-  memberCount: number;
+    id: number;
+    name: string;
+    workspace: string;
+    workspace_id?: number;
+    role: string;
+    progress: number;
+    memberCount: number;
 }
 
 // 태스크
 interface Task {
-  id: number;
-  title: string;
-  status: TaskStatus;  // 'inbox' | 'todo' | 'doing' | 'in-progress' | 'done'
-  content?: string;
-  x: number;
-  y: number;
-  boardId: number;
-  column_id?: number;
-  tags?: Tag[];
-  comments?: Comment[];
-  files?: TaskFile[];
-  assignees?: Assignee[];
+    id: number;
+    title: string;
+    status: TaskStatus;  // 'inbox' | 'todo' | 'doing' | 'in-progress' | 'done'
+    content?: string;
+    x: number;
+    y: number;
+    boardId: number;
+    column_id?: number;
+    tags?: Tag[];
+    comments?: Comment[];
+    files?: TaskFile[];
+    assignees?: Assignee[];
 }
 
 // 연결선
 interface Connection {
-  id: number;
-  from: number;
-  to: number;
-  shape?: 'bezier' | 'straight';
-  style?: 'solid' | 'dashed';
-  sourceHandle?: 'left' | 'right';
-  targetHandle?: 'left' | 'right';
+    id: number;
+    from: number;
+    to: number;
+    shape?: 'bezier' | 'straight';
+    style?: 'solid' | 'dashed';
+    sourceHandle?: 'left' | 'right';
+    targetHandle?: 'left' | 'right';
 }
 
 // 그룹
 interface Group {
-  id: number;
-  title: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  parentId?: number | null;
-  depth: number;
-  collapsed?: boolean;
-  projectId: number;
+    id: number;
+    title: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    parentId?: number | null;
+    depth: number;
+    collapsed?: boolean;
+    projectId: number;
 }
 ```
 
@@ -472,8 +499,8 @@ import { useSortableGrid } from '@/src/containers/hooks/board';
 #### Step 1: 타입 정의 (`models/types/index.ts`)
 ```typescript
 export interface NewFeature {
-  id: number;
-  name: string;
+    id: number;
+    name: string;
 }
 ```
 
@@ -483,11 +510,11 @@ import { API_CONFIG, apiFetch, mockDelay } from './config';
 import type { NewFeature } from '../types';
 
 export async function getNewFeatures(): Promise<NewFeature[]> {
-  if (API_CONFIG.USE_MOCK) {
-    await mockDelay(200);
-    return [{ id: 1, name: 'Mock Feature' }];
-  }
-  return apiFetch<NewFeature[]>('/new-features');
+    if (API_CONFIG.USE_MOCK) {
+        await mockDelay(200);
+        return [{ id: 1, name: 'Mock Feature' }];
+    }
+    return apiFetch<NewFeature[]>('/new-features');
 }
 ```
 
@@ -504,16 +531,16 @@ import React from 'react';
 import type { NewFeature } from '@/src/models/types';
 
 interface Props {
-  feature: NewFeature;
-  onClick: (feature: NewFeature) => void;
+    feature: NewFeature;
+    onClick: (feature: NewFeature) => void;
 }
 
 export function NewFeatureCard({ feature, onClick }: Props) {
-  return (
-    <div onClick={() => onClick(feature)}>
-      {feature.name}
+    return (
+        <div onClick={() => onClick(feature)}>
+    {feature.name}
     </div>
-  );
+);
 }
 ```
 
@@ -535,23 +562,23 @@ import { NewFeatureCard } from '@/src/views/new-feature';
 #### 낙관적 UI 업데이트 (Optimistic Update)
 ```typescript
 const handleCreateTask = async (taskData: Partial<Task>) => {
-  // 1. 즉시 UI 업데이트 (임시 ID)
-  const tempTask = { ...taskData, id: Date.now() } as Task;
-  setTasks(prev => [...prev, tempTask]);
+    // 1. 즉시 UI 업데이트 (임시 ID)
+    const tempTask = { ...taskData, id: Date.now() } as Task;
+    setTasks(prev => [...prev, tempTask]);
 
-  try {
-    // 2. 실제 API 호출
-    const savedTask = await createTask(projectId, taskData);
-    
-    // 3. 실제 데이터로 교체
-    setTasks(prev => prev.map(t => 
-      t.id === tempTask.id ? savedTask : t
-    ));
-  } catch (err) {
-    // 4. 실패 시 롤백
-    setTasks(prev => prev.filter(t => t.id !== tempTask.id));
-    console.error('Failed to create task:', err);
-  }
+    try {
+        // 2. 실제 API 호출
+        const savedTask = await createTask(projectId, taskData);
+
+        // 3. 실제 데이터로 교체
+        setTasks(prev => prev.map(t =>
+            t.id === tempTask.id ? savedTask : t
+        ));
+    } catch (err) {
+        // 4. 실패 시 롤백
+        setTasks(prev => prev.filter(t => t.id !== tempTask.id));
+        console.error('Failed to create task:', err);
+    }
 };
 ```
 
@@ -560,32 +587,32 @@ const handleCreateTask = async (taskData: Partial<Task>) => {
 // View: 순수 UI만 (props로 모든 것을 받음)
 // views/task/TaskCard.tsx
 export function TaskCard({ task, onClick, onDelete }: TaskCardProps) {
-  return (
-    <div onClick={() => onClick(task)}>
-      {task.title}
-      <button onClick={() => onDelete(task.id)}>Delete</button>
+    return (
+        <div onClick={() => onClick(task)}>
+    {task.title}
+    <button onClick={() => onDelete(task.id)}>Delete</button>
     </div>
-  );
+);
 }
 
 // Controller: 상태 관리 + API 호출
 // containers/screens/BoardScreen.tsx
 export function BoardScreen({ project }) {
-  const [tasks, setTasks] = useState<Task[]>([]);
-  
-  const handleTaskClick = (task: Task) => { /* ... */ };
-  const handleTaskDelete = async (taskId: number) => {
-    await deleteTask(taskId);
-    setTasks(prev => prev.filter(t => t.id !== taskId));
-  };
-  
-  return (
-    <TaskCard 
-      task={task} 
-      onClick={handleTaskClick} 
-      onDelete={handleTaskDelete} 
+    const [tasks, setTasks] = useState<Task[]>([]);
+
+    const handleTaskClick = (task: Task) => { /* ... */ };
+    const handleTaskDelete = async (taskId: number) => {
+        await deleteTask(taskId);
+        setTasks(prev => prev.filter(t => t.id !== taskId));
+    };
+
+    return (
+        <TaskCard
+            task={task}
+    onClick={handleTaskClick}
+    onDelete={handleTaskDelete}
     />
-  );
+);
 }
 ```
 
@@ -628,25 +655,25 @@ NEXT_PUBLIC_FILE_UPLOAD_MAX_SIZE=10485760  # 10MB
 @import "tailwindcss";
 
 :root {
-  --bg-primary: #f5f5f7;
-  --accent: #0071e3;
-  --domo-primary: #3b82f6;
-  --domo-highlight: #8b5cf6;
+    --bg-primary: #f5f5f7;
+    --accent: #0071e3;
+    --domo-primary: #3b82f6;
+    --domo-highlight: #8b5cf6;
 }
 
 .dark {
-  --bg-primary: #000000;
-  --accent: #0a84ff;
+    --bg-primary: #000000;
+    --accent: #0a84ff;
 }
 
 /* Glass morphism */
 .glass-panel {
-  @apply bg-white/70 dark:bg-[#1c1c1e]/70 backdrop-blur-xl;
+    @apply bg-white/70 dark:bg-[#1c1c1e]/70 backdrop-blur-xl;
 }
 
 .glass-card {
-  @apply bg-white/60 dark:bg-[#1c1c1e]/60 backdrop-blur-lg 
-         border border-white/20 dark:border-white/10;
+    @apply bg-white/60 dark:bg-[#1c1c1e]/60 backdrop-blur-lg
+    border border-white/20 dark:border-white/10;
 }
 ```
 
