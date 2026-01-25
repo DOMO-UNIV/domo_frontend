@@ -142,7 +142,6 @@ export function useVoiceChat(projectId: number, userId: number) {
     const cleanup = useCallback(() => {
         if (!isConnected && !socketRef.current) return;
 
-        console.log('🧹 Cleaning up voice chat...');
         setIsConnected(false);
         setIsMuted(false);
         setIsDeafened(false);
@@ -182,7 +181,6 @@ export function useVoiceChat(projectId: number, userId: number) {
 
         // Mock Mode
         if (API_CONFIG.USE_MOCK) {
-            console.log('🎧 [Mock] Joining voice channel...');
             setIsConnected(true);
             setActivePeerIds([userId, 999]); // 나 + 가상 유저
             return;
@@ -194,7 +192,6 @@ export function useVoiceChat(projectId: number, userId: number) {
         }
 
         try {
-            console.log('🎤 Requesting microphone access...');
             const stream = await navigator.mediaDevices.getUserMedia({
                 audio: {
                     echoCancellation: true,
@@ -207,13 +204,11 @@ export function useVoiceChat(projectId: number, userId: number) {
             localStreamRef.current = stream;
 
             const wsUrl = getWebSocketUrl(`ws/projects/${projectId}/voice`);
-            console.log(`🔗 Connecting to WebSocket: ${wsUrl}`);
 
             const ws = new WebSocket(wsUrl);
             socketRef.current = ws;
 
             ws.onopen = () => {
-                console.log('🟢 WebSocket Connected!');
                 setIsConnected(true);
                 setActivePeerIds([userId]);
                 ws.send(JSON.stringify({ type: 'join', senderId: userId }));
@@ -243,17 +238,16 @@ export function useVoiceChat(projectId: number, userId: number) {
             };
 
             ws.onerror = (error) => {
-                console.error('🔴 WebSocket Error:', error);
+                console.error('WebSocket Error:', error);
                 cleanup();
             };
 
             ws.onclose = () => {
-                console.log('🔴 WebSocket Closed');
                 cleanup();
             };
 
         } catch (err) {
-            console.error('❌ Failed to join voice chat:', err);
+            console.error('Failed to join voice chat:', err);
             cleanup();
         }
     }, [

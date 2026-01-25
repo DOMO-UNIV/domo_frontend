@@ -425,7 +425,7 @@ export function useSortableGrid(
                 await onTaskMove(dragContext.taskId, dropPreview.groupId, dropPreview.index);
             }
         } else {
-            // ✅ 그룹 밖으로 드롭 - column_id를 null(undefined)로 설정하고 자유 배치
+            // 그룹 밖으로 드롭 - column_id를 null(undefined)로 설정하고 자유 배치
             // currentDragPos가 제공되면 해당 위치 사용, 아니면 원래 위치 유지
             const newX = currentDragPos?.x ?? task.x;
             const newY = currentDragPos?.y ?? task.y;
