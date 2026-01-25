@@ -1,16 +1,24 @@
 
 import React, { useState, useEffect } from 'react';
-import { getPost, createPostComment, deletePost, deletePostComment, getCurrentUser, updatePost } from '@/src/lib/api';
+import {
+    getProjectPost, getCommunityPost,
+    createCommunityComment, createProjectComment,
+    deleteCommunityPost, deleteProjectPost,
+    deleteCommunityComment, deleteProjectComment,
+    updateCommunityPost, updateProjectPost,
+    getCurrentUser
+} from '@/src/lib/api';
 import type { Post, PostComment, User } from '@/src/types';
 import { ArrowLeft, Loader2, User as UserIcon, Send, Trash2, Clock } from 'lucide-react';
 import { getImageUrl } from '@/src/lib/utils/image';
 
 interface PostDetailProps {
     postId: number;
+    mode: 'community' | 'project';
     onBack: () => void;
 }
 
-export const PostDetail: React.FC<PostDetailProps> = ({ postId, onBack }) => {
+export const PostDetail: React.FC<PostDetailProps> = ({ postId, mode, onBack }) => {
     const [post, setPost] = useState<Post | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [commentContent, setCommentContent] = useState('');
@@ -21,8 +29,12 @@ export const PostDetail: React.FC<PostDetailProps> = ({ postId, onBack }) => {
     useEffect(() => {
         const fetchData = async () => {
             try {
+                const postPromise = mode === 'community'
+                    ? getCommunityPost(postId)
+                    : getProjectPost(postId);
+
                 const [postData, userData] = await Promise.all([
-                    getPost(postId),
+                    postPromise,
                     getCurrentUser()
                 ]);
                 setPost(postData);
@@ -34,14 +46,18 @@ export const PostDetail: React.FC<PostDetailProps> = ({ postId, onBack }) => {
             }
         };
         fetchData();
-    }, [postId]);
+    }, [postId, mode]);
 
     const handleDeletePost = async () => {
         if (!confirm('정말로 이 게시글을 삭제하시겠습니까?')) return;
 
         setIsDeleting(true);
         try {
-            await deletePost(postId);
+            if (mode === 'community') {
+                await deleteCommunityPost(postId);
+            } else {
+                await deleteProjectPost(postId);
+            }
             onBack(); // 목록으로 돌아가기
         } catch (error) {
             console.error('Failed to delete post:', error);
@@ -56,7 +72,13 @@ export const PostDetail: React.FC<PostDetailProps> = ({ postId, onBack }) => {
 
         setIsSubmittingComment(true);
         try {
-            const newComment = await createPostComment(postId, { content: commentContent });
+            let newComment;
+            if (mode === 'community') {
+                newComment = await createCommunityComment(postId, { content: commentContent });
+            } else {
+                newComment = await createProjectComment(postId, { content: commentContent });
+            }
+
             // 댓글 목록 업데이트
             setPost(prev => prev ? {
                 ...prev,
@@ -75,7 +97,12 @@ export const PostDetail: React.FC<PostDetailProps> = ({ postId, onBack }) => {
         if (!confirm('댓글을 삭제하시겠습니까?')) return;
 
         try {
-            await deletePostComment(commentId);
+            if (mode === 'community') {
+                await deleteCommunityComment(commentId);
+            } else {
+                await deleteProjectComment(commentId);
+            }
+
             setPost(prev => prev ? {
                 ...prev,
                 comments: prev.comments?.filter(c => c.id !== commentId)
@@ -101,10 +128,19 @@ export const PostDetail: React.FC<PostDetailProps> = ({ postId, onBack }) => {
         if (!editTitle.trim() || !editContent.trim()) return;
 
         try {
-            const updatedPost = await updatePost(postId, {
-                title: editTitle,
-                content: editContent
-            });
+            let updatedPost;
+            if (mode === 'community') {
+                updatedPost = await updateCommunityPost(postId, {
+                    title: editTitle,
+                    content: editContent
+                });
+            } else {
+                updatedPost = await updateProjectPost(postId, {
+                    title: editTitle,
+                    content: editContent
+                });
+            }
+
             setPost(prev => prev ? { ...prev, title: updatedPost.title, content: updatedPost.content } : null);
             setIsEditing(false);
         } catch (error) {

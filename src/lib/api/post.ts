@@ -121,35 +121,38 @@ export async function createCommunityPost(data: PostCreateRequest): Promise<Post
 }
 
 /**
- * 게시글 상세 조회
- * GET /posts/{post_id} -> 백엔드엔 없음. 목록에서 처리가능하거나 필요하면 추가.
- * 하지만 기존 코드가 있어서 유지하되, 백엔드 라우터엔 없음.
- * -> 백엔드가 /community (목록)만 제공하고 상세 조회는 없는 듯 함 (GET /community는 목록).
- *    근데 수정/삭제는 /community/{post_id}가 있음.
- *    상세 조회용 API가 없다면 목록에서 찾거나, 새로 만들어야 함.
- *    일단 기존 유지하되 에러날 수 있음. 
- *    user router 코드를 보면 상세 조회(GET /community/{id})는 없음.
- *    따라서 일단 호출하면 404 날 것임. 수정이 필요하면 말해달라고 주석 남김.
+ * 게시글 상세 조회 (커뮤니티)
+ * GET /community/{post_id}
  */
-export async function getPost(postId: number): Promise<Post> {
+export async function getCommunityPost(postId: number): Promise<Post> {
     if (API_CONFIG.USE_MOCK) {
         await mockDelay(300);
         const post = MOCK_POSTS.find(p => p.id === postId);
         if (!post) throw new Error('Post not found');
         return post;
     }
-
-    // 백엔드에 상세 조회 API가 구현되어 있지 않아 보임.
-    // 임시로 /community 목록에서 필터링하거나, 구현이 필요함.
-    // 일단 요청은 보내봄. (혹시 나중에 생길 수 있으니)
     return apiFetch<Post>(`/community/${postId}`);
 }
 
 /**
- * 게시글 수정
+ * 게시글 상세 조회 (프로젝트)
+ * GET /posts/{post_id}
+ */
+export async function getProjectPost(postId: number): Promise<Post> {
+    if (API_CONFIG.USE_MOCK) {
+        await mockDelay(300);
+        const post = MOCK_POSTS.find(p => p.id === postId);
+        if (!post) throw new Error('Post not found');
+        return post;
+    }
+    return apiFetch<Post>(`/posts/${postId}`);
+}
+
+/**
+ * 커뮤니티 게시글 수정
  * PATCH /community/{post_id}
  */
-export async function updatePost(postId: number, data: PostUpdateRequest): Promise<Post> {
+export async function updateCommunityPost(postId: number, data: PostUpdateRequest): Promise<Post> {
     if (API_CONFIG.USE_MOCK) {
         await mockDelay(500);
         const post = MOCK_POSTS.find(p => p.id === postId);
@@ -166,10 +169,28 @@ export async function updatePost(postId: number, data: PostUpdateRequest): Promi
 }
 
 /**
- * 게시글 삭제
+ * 프로젝트 게시글 수정
+ * PATCH /posts/{post_id}
+ */
+export async function updateProjectPost(postId: number, data: PostUpdateRequest): Promise<Post> {
+    if (API_CONFIG.USE_MOCK) {
+        await mockDelay(500);
+        const post = MOCK_POSTS.find(p => p.id === postId);
+        if (!post) throw new Error('Post not found');
+        return { ...post, ...data, updated_at: new Date().toISOString() };
+    }
+
+    return apiFetch<Post>(`/posts/${postId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+    });
+}
+
+/**
+ * 커뮤니티 게시글 삭제
  * DELETE /community/{post_id}
  */
-export async function deletePost(postId: number): Promise<{ message: string }> {
+export async function deleteCommunityPost(postId: number): Promise<{ message: string }> {
     if (API_CONFIG.USE_MOCK) {
         await mockDelay(400);
         const index = MOCK_POSTS.findIndex(p => p.id === postId);
@@ -183,10 +204,27 @@ export async function deletePost(postId: number): Promise<{ message: string }> {
 }
 
 /**
- * 댓글 작성
+ * 프로젝트 게시글 삭제
+ * DELETE /posts/{post_id}
+ */
+export async function deleteProjectPost(postId: number): Promise<{ message: string }> {
+    if (API_CONFIG.USE_MOCK) {
+        await mockDelay(400);
+        const index = MOCK_POSTS.findIndex(p => p.id === postId);
+        if (index === -1) throw new Error('Post not found');
+        return { message: '게시글이 삭제되었습니다.' };
+    }
+
+    return apiFetch<{ message: string }>(`/posts/${postId}`, {
+        method: 'DELETE',
+    });
+}
+
+/**
+ * 커뮤니티 댓글 작성
  * POST /community/{post_id}/comments
  */
-export async function createPostComment(postId: number, data: PostCommentCreateRequest): Promise<PostComment> {
+export async function createCommunityComment(postId: number, data: PostCommentCreateRequest): Promise<PostComment> {
     if (API_CONFIG.USE_MOCK) {
         await mockDelay(400);
         const newComment: PostComment = {
@@ -207,16 +245,55 @@ export async function createPostComment(postId: number, data: PostCommentCreateR
 }
 
 /**
- * 댓글 삭제
+ * 프로젝트 댓글 작성
+ * POST /posts/{post_id}/comments
+ */
+export async function createProjectComment(postId: number, data: PostCommentCreateRequest): Promise<PostComment> {
+    if (API_CONFIG.USE_MOCK) {
+        await mockDelay(400);
+        const newComment: PostComment = {
+            id: Date.now(),
+            post_id: postId,
+            user_id: 1,
+            content: data.content,
+            created_at: new Date().toISOString(),
+            user: { id: 1, name: '김도모', email: 'student@jj.ac.kr' } as any
+        };
+        return newComment;
+    }
+
+    return apiFetch<PostComment>(`/posts/${postId}/comments`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+    });
+}
+
+/**
+ * 커뮤니티 댓글 삭제
  * DELETE /community/comments/{comment_id}
  */
-export async function deletePostComment(commentId: number): Promise<{ message: string }> {
+export async function deleteCommunityComment(commentId: number): Promise<{ message: string }> {
     if (API_CONFIG.USE_MOCK) {
         await mockDelay(300);
         return { message: '댓글이 삭제되었습니다.' };
     }
 
     return apiFetch<{ message: string }>(`/community/comments/${commentId}`, {
+        method: 'DELETE',
+    });
+}
+
+/**
+ * 프로젝트 댓글 삭제
+ * DELETE /posts/comments/{comment_id}
+ */
+export async function deleteProjectComment(commentId: number): Promise<{ message: string }> {
+    if (API_CONFIG.USE_MOCK) {
+        await mockDelay(300);
+        return { message: '댓글이 삭제되었습니다.' };
+    }
+
+    return apiFetch<{ message: string }>(`/posts/comments/${commentId}`, {
         method: 'DELETE',
     });
 }

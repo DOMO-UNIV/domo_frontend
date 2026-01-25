@@ -80,11 +80,16 @@ export {
   getCommunityPosts,
   createProjectPost,
   createCommunityPost,
-  getPost,
-  updatePost,
-  deletePost,
-  createPostComment,
-  deletePostComment,
+  getProjectPost,
+  getCommunityPost,
+  updateCommunityPost,
+  updateProjectPost,
+  deleteCommunityPost,
+  deleteProjectPost,
+  createCommunityComment,
+  createProjectComment,
+  deleteCommunityComment,
+  deleteProjectComment,
 } from './post';
 
 // 파일 API

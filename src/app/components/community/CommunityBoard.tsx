@@ -154,6 +154,7 @@ export const CommunityBoard: React.FC<CommunityBoardProps> = ({ projectId = 1, v
                                 {viewMode === 'detail' && selectedPostId && (
                                     <PostDetail
                                         postId={selectedPostId}
+                                        mode={viewType === 'grid' ? 'community' : 'project'}
                                         onBack={handleBackToList}
                                     />
                                 )}
