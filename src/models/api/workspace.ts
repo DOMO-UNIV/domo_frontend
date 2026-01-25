@@ -382,30 +382,65 @@ export async function getWorkspaceMembers(workspaceId: number): Promise<Member[]
 }
 
 /**
- * 워크스페이스 온라인 멤버 조회
+ * 워크스페이스 온라인 멤버 SSE 구독
+ * @param workspaceId 워크스페이스 ID
+ * @param onUpdate 온라인 멤버 목록 업데이트 콜백
+ * @param onError SSE 연결 에러 콜백 (optional)
+ * @returns cleanup 함수 (구독 해제용)
  */
-export async function getOnlineMembers(workspaceId: number): Promise<User[]> {
+export function subscribeOnlineMembers(
+    workspaceId: number,
+    onUpdate: (members: User[]) => void,
+    onError?: (error: Event) => void
+): () => void {
   if (API_CONFIG.USE_MOCK) {
-    await mockDelay(200);
-    return MOCK_ONLINE_MEMBERS;
+    // Mock 모드: interval로 시뮬레이션 (5초 주기)
+    const interval = setInterval(() => {
+      onUpdate(MOCK_ONLINE_MEMBERS);
+    }, 5000);
+
+    // 최초 1회 즉시 호출
+    onUpdate(MOCK_ONLINE_MEMBERS);
+
+    return () => clearInterval(interval);
   }
 
-  // 백엔드: GET /api/workspaces/{id}/online-members
-  const response = await apiFetch<{
-    id: number;
-    email: string;
-    name: string;
-    is_student_verified: boolean;
-    profile_image?: string;
-  }[]>(`/workspaces/${workspaceId}/online-members`);
+  // SSE 연결: REALTIME_URL 사용 (개발환경 프록시 버퍼링 우회)
+  const eventSource = new EventSource(
+      `${API_CONFIG.REALTIME_URL}/workspaces/${workspaceId}/online-members/stream`,
+      { withCredentials: true }
+  );
 
-  return response.map(u => ({
-    id: u.id,
-    email: u.email,
-    name: u.name,
-    is_student_verified: u.is_student_verified,
-    profile_image: u.profile_image,
-  }));
+  eventSource.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      const members: User[] = data.online_members.map((u: {
+        id: number;
+        name: string;
+        email: string;
+        profile_image?: string;
+      }) => ({
+        id: u.id,
+        email: u.email,
+        name: u.name,
+        is_student_verified: true,
+        profile_image: u.profile_image,
+      }));
+      onUpdate(members);
+    } catch (err) {
+      console.error('SSE 파싱 에러:', err);
+    }
+  };
+
+  eventSource.onerror = (error) => {
+    console.error('SSE 연결 에러:', error);
+    onError?.(error);
+  };
+
+  // cleanup 함수 반환
+  return () => {
+    eventSource.close();
+  };
 }
 
 /**
