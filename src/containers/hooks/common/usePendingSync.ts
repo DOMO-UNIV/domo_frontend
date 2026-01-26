@@ -98,16 +98,16 @@ export interface UsePendingSyncReturn<T = unknown, S = unknown> {
 
   // 메서드 (기존 단건 API용)
   queueChange: (
-    type: ChangeType,
-    entityId: number,
-    payload: T,
-    snapshot: S,
-    apiCall: (payload: T) => Promise<void>
+      type: ChangeType,
+      entityId: number,
+      payload: T,
+      snapshot: S,
+      apiCall: (payload: T) => Promise<void>
   ) => void;
-  
+
   // 메서드 (Batch API용)
   queueBatchChange: (items: BatchChangeItem[]) => void;
-  
+
   flush: () => Promise<void>;
   clearError: () => void;
   retryFailed: () => void;
@@ -130,7 +130,7 @@ function generateChangeId(): string {
 // ============================================
 
 export function usePendingSync<T = unknown, S = unknown>(
-  options: UsePendingSyncOptions<T, S> = {}
+    options: UsePendingSyncOptions<T, S> = {}
 ): UsePendingSyncReturn<T, S> {
   const {
     debounceMs = 400,  // 100ms → 400ms로 변경 (연속 드래그 대응)
@@ -210,17 +210,17 @@ export function usePendingSync<T = unknown, S = unknown>(
       await batchApi(payloads);
 
       console.log('[Optimistic] Batch 동기화 성공');
-      
+
       // 성공 시 Batch 상태 초기화
       setBatchChange(null);
       batchChangeRef.current = null;
-      
+
       return true;
     } catch (err) {
       console.error('[Optimistic] Batch 동기화 실패:', err);
-      
+
       const canRetry = batch.retryCount < maxRetries;
-      
+
       if (canRetry) {
         // 재시도 횟수 증가
         const updatedBatch: BatchChange = {
@@ -233,12 +233,12 @@ export function usePendingSync<T = unknown, S = unknown>(
         // 최대 재시도 초과 - 롤백
         console.log('[Optimistic] Batch 최대 재시도 초과, 롤백 실행');
         onBatchRollbackRef.current?.(batch.items);
-        
+
         // Batch 상태 초기화
         setBatchChange(null);
         batchChangeRef.current = null;
       }
-      
+
       return false;
     }
   }, [maxRetries]);
@@ -365,7 +365,7 @@ export function usePendingSync<T = unknown, S = unknown>(
     // 재시도할 변경 사항이 있으면 다시 스케줄링
     const hasRetryBatch = batchChangeRef.current && batchChangeRef.current.retryCount > 0;
     const hasRetrySingle = pendingChangesRef.current.length > 0;
-    
+
     if (hasRetryBatch || hasRetrySingle) {
       setTimeout(() => {
         executeSync();
@@ -401,7 +401,7 @@ export function usePendingSync<T = unknown, S = unknown>(
 
       for (const newItem of items) {
         const existingIndex = mergedItems.findIndex(
-          item => item.entityId === newItem.entityId
+            item => item.entityId === newItem.entityId
         );
 
         if (existingIndex >= 0) {
@@ -438,21 +438,21 @@ export function usePendingSync<T = unknown, S = unknown>(
   // ============================================
 
   const queueChange = useCallback((
-    type: ChangeType,
-    entityId: number,
-    payload: T,
-    snapshot: S,
-    apiCall: (payload: T) => Promise<void>
+      type: ChangeType,
+      entityId: number,
+      payload: T,
+      snapshot: S,
+      apiCall: (payload: T) => Promise<void>
   ) => {
     setPendingChanges(prev => {
       // 같은 엔티티의 기존 변경이 있으면 병합 (마지막 값으로 덮어쓰기)
       const existingIndex = prev.findIndex(
-        c => c.entityId === entityId && c.type === type
+          c => c.entityId === entityId && c.type === type
       );
 
       const changeId = existingIndex >= 0
-        ? prev[existingIndex].id
-        : generateChangeId();
+          ? prev[existingIndex].id
+          : generateChangeId();
 
       // API 콜 저장/업데이트
       apiCallsRef.current.set(changeId, apiCall);
@@ -509,12 +509,12 @@ export function usePendingSync<T = unknown, S = unknown>(
   const retryFailed = useCallback(() => {
     // 실패한 변경들의 재시도 횟수 리셋
     setPendingChanges(prev =>
-      prev.map(c => ({ ...c, retryCount: 0 }))
+        prev.map(c => ({ ...c, retryCount: 0 }))
     );
-    
+
     // Batch 재시도 횟수도 리셋
     setBatchChange(prev => prev ? { ...prev, retryCount: 0 } : null);
-    
+
     setLastError(null);
     scheduleSync();
   }, [scheduleSync]);
@@ -524,11 +524,11 @@ export function usePendingSync<T = unknown, S = unknown>(
   // ============================================
 
   const getChangeForEntity = useCallback((
-    entityId: number,
-    type: ChangeType
+      entityId: number,
+      type: ChangeType
   ): PendingChange<T, S> | undefined => {
     return pendingChangesRef.current.find(
-      c => c.entityId === entityId && c.type === type
+        c => c.entityId === entityId && c.type === type
     );
   }, []);
 
@@ -538,15 +538,15 @@ export function usePendingSync<T = unknown, S = unknown>(
 
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      const hasPending = isSyncingRef.current || 
-        pendingChangesRef.current.length > 0 || 
-        (batchChangeRef.current && batchChangeRef.current.items.length > 0);
-      
+      const hasPending = isSyncingRef.current ||
+          pendingChangesRef.current.length > 0 ||
+          (batchChangeRef.current && batchChangeRef.current.items.length > 0);
+
       if (hasPending) {
         e.preventDefault();
         const message = isSyncingRef.current
-          ? '저장 중입니다. 잠시만 기다려주세요.'
-          : '저장되지 않은 변경 사항이 있습니다. 페이지를 떠나시겠습니까?';
+            ? '저장 중입니다. 잠시만 기다려주세요.'
+            : '저장되지 않은 변경 사항이 있습니다. 페이지를 떠나시겠습니까?';
         e.returnValue = message;
         return message;
       }
@@ -563,18 +563,27 @@ export function usePendingSync<T = unknown, S = unknown>(
   // ============================================
 
   useEffect(() => {
+    // cleanup 함수가 실행될 때 ref 값이 변경될 수 있으므로
+    // effect 내에서 미리 복사해둠 (린트 규칙 준수)
+    const apiCallsMap = apiCallsRef.current;
+    const debounceTimer = debounceTimerRef;
+    const batchChangeSnapshot = batchChangeRef;
+    const pendingChangesSnapshot = pendingChangesRef;
+    const isSyncingSnapshot = isSyncingRef;
+    const batchApiSnapshot = batchApiCallRef;
+
     return () => {
       // debounce 타이머 취소
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-        debounceTimerRef.current = null;
+      if (debounceTimer.current) {
+        clearTimeout(debounceTimer.current);
+        debounceTimer.current = null;
       }
 
       // Batch 변경사항 즉시 저장
-      const batchToSave = batchChangeRef.current;
-      if (batchToSave && batchToSave.items.length > 0 && !isSyncingRef.current) {
+      const batchToSave = batchChangeSnapshot.current;
+      if (batchToSave && batchToSave.items.length > 0 && !isSyncingSnapshot.current) {
         console.log('[Optimistic] Unmount 시 Batch 저장 시작:', batchToSave.items.length, '개');
-        const batchApi = batchApiCallRef.current;
+        const batchApi = batchApiSnapshot.current;
         if (batchApi) {
           const payloads = batchToSave.items.map(item => item.payload);
           batchApi(payloads).catch(err => {
@@ -584,11 +593,11 @@ export function usePendingSync<T = unknown, S = unknown>(
       }
 
       // 단건 변경사항 즉시 저장
-      const pendingToSave = pendingChangesRef.current;
-      if (pendingToSave.length > 0 && !isSyncingRef.current) {
+      const pendingToSave = pendingChangesSnapshot.current;
+      if (pendingToSave.length > 0 && !isSyncingSnapshot.current) {
         console.log('[Optimistic] Unmount 시 단건 저장 시작:', pendingToSave.length, '개');
         pendingToSave.forEach(change => {
-          const apiCall = apiCallsRef.current.get(change.id);
+          const apiCall = apiCallsMap.get(change.id);
           if (apiCall) {
             apiCall(change.payload).catch(err => {
               console.error('[Optimistic] Unmount 단건 저장 실패:', change.id, err);
