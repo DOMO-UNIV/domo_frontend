@@ -1,6 +1,6 @@
 import React from 'react';
 import type { Post } from '@/src/models/types';
-import { MessageSquare, Bookmark, Image, User as UserIcon } from 'lucide-react';
+import { MessageSquare, Heart, Eye, User as UserIcon, Bookmark, RefreshCw, Image } from 'lucide-react';
 import { getImageUrl } from '@/src/models/utils/image';
 
 interface PostListProps {
@@ -43,6 +43,7 @@ export const PostList: React.FC<PostListProps> = ({ posts, onPostClick, layout =
         return date.toLocaleDateString('ko-KR', { year: '2-digit', month: '2-digit', day: '2-digit' });
     };
 
+    // 3D/Gradient 플레이스홀더 패턴 (이미지가 없을 때 사용)
     const getGradient = (id: number) => {
         const gradients = [
             'bg-gradient-to-br from-blue-100 to-indigo-200 dark:from-blue-900/40 dark:to-indigo-800/40',
@@ -74,7 +75,7 @@ export const PostList: React.FC<PostListProps> = ({ posts, onPostClick, layout =
                             {/* Image or Placeholder Content */}
                             <div className="transform group-hover:scale-105 transition-transform duration-500 w-full h-full flex items-center justify-center">
                                 {post.image_url ? (
-                                    <img src={getImageUrl(post.image_url)} alt={post.title} className="w-full h-full object-cover" />
+                                    <img src={post.image_url} alt={post.title} className="w-full h-full object-cover" />
                                 ) : (
                                     <h3 className="text-6xl font-black text-black/10 dark:text-white/10 select-none">
                                         {post.title.slice(0, 1)}
@@ -91,11 +92,13 @@ export const PostList: React.FC<PostListProps> = ({ posts, onPostClick, layout =
 
                             {/* Author Info */}
                             <div className="flex items-center gap-2 mt-auto pt-4">
-                                <div className="w-6 h-6 rounded-full overflow-hidden bg-gradient-to-br from-blue-400 to-purple-500 flex-shrink-0 flex items-center justify-center">
+                                <div className="w-6 h-6 rounded-full overflow-hidden bg-gray-200 dark:bg-gray-700 flex-shrink-0">
                                     {post.user?.profile_image ? (
                                         <img src={getImageUrl(post.user.profile_image)} alt={post.user.name} className="w-full h-full object-cover" />
                                     ) : (
-                                        <UserIcon size={14} className="text-white" />
+                                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-400 to-purple-500 text-white text-[10px] font-bold">
+                                            {(post.user?.nickname || post.user?.name || '?').slice(0, 1)}
+                                        </div>
                                     )}
                                 </div>
                                 <span className="text-xs font-medium text-gray-500 dark:text-gray-400 truncate">
@@ -161,11 +164,13 @@ export const PostList: React.FC<PostListProps> = ({ posts, onPostClick, layout =
                         </td>
                         <td className="px-6 py-4 text-center">
                             <div className="flex items-center justify-center gap-2">
-                                <div className="w-5 h-5 rounded-full overflow-hidden bg-gradient-to-br from-blue-400 to-purple-500 flex-shrink-0 flex items-center justify-center">
+                                <div className="w-5 h-5 rounded-full overflow-hidden bg-gray-200 dark:bg-gray-700 flex-shrink-0">
                                     {post.user?.profile_image ? (
                                         <img src={getImageUrl(post.user.profile_image)} alt={post.user.name} className="w-full h-full object-cover" />
                                     ) : (
-                                        <UserIcon size={12} className="text-white" />
+                                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-400 to-purple-500 text-white text-[8px] font-bold">
+                                            {(post.user?.nickname || post.user?.name || '?').slice(0, 1)}
+                                        </div>
                                     )}
                                 </div>
                                 <span className="text-gray-600 dark:text-gray-300 truncate max-w-[80px]">

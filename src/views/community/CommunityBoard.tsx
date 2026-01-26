@@ -9,7 +9,7 @@ import type { Post } from '@/src/models/types';
 import { Loader2, Plus, Search } from 'lucide-react';
 
 interface CommunityBoardProps {
-    projectId?: number;
+    projectId?: number; // 커뮤니티용 프로젝트 ID (기본값: 1)
     viewType?: 'grid' | 'table';
 }
 
@@ -53,12 +53,12 @@ export const CommunityBoard: React.FC<CommunityBoardProps> = ({ projectId = 1, v
     const handleBackToList = () => {
         setSelectedPostId(null);
         setViewMode('list');
-        fetchPosts();
+        fetchPosts(); // 목록 갱신
     };
 
     const handleWriteSuccess = () => {
         setViewMode('list');
-        fetchPosts();
+        fetchPosts(); // 목록 갱신
     };
 
     const filteredPosts = posts
@@ -86,14 +86,8 @@ export const CommunityBoard: React.FC<CommunityBoardProps> = ({ projectId = 1, v
                 {/* Header */}
                 <div className="flex items-center justify-between mb-8">
                     <div>
-                        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-                            {viewType === 'grid' ? '커뮤니티' : '프로젝트 게시판'}
-                        </h1>
-                        <p className="text-gray-500 dark:text-gray-400">
-                            {viewType === 'grid'
-                                ? '전체 사용자와 자유롭게 소통하세요.'
-                                : '프로젝트 팀원들과 정보를 공유하세요.'}
-                        </p>
+                        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">커뮤니티</h1>
+                        <p className="text-gray-500 dark:text-gray-400">자유롭게 소통하고 정보를 공유하세요.</p>
                     </div>
 
                     {viewMode === 'list' && (

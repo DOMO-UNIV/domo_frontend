@@ -1,5 +1,3 @@
-'use client';
-
 import React, { useState } from 'react';
 import { createProjectPost, createCommunityPost } from '@/src/models/api';
 import { ArrowLeft, Loader2, Send, Image, X } from 'lucide-react';
@@ -94,6 +92,7 @@ export const PostWriter: React.FC<PostWriterProps> = ({ projectId, mode, onCance
 
                         {previewUrl ? (
                             <div className="relative w-full h-64 rounded-xl overflow-hidden bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 group-hover:border-blue-500 transition-colors">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img src={previewUrl} alt="Preview" className="w-full h-full object-cover" />
                                 <button
                                     type="button"
@@ -101,6 +100,7 @@ export const PostWriter: React.FC<PostWriterProps> = ({ projectId, mode, onCance
                                         setSelectedFile(null);
                                         if (previewUrl) URL.revokeObjectURL(previewUrl);
                                         setPreviewUrl(null);
+                                        // Reset input value to allow selecting same file again
                                         const input = document.getElementById('image-upload') as HTMLInputElement;
                                         if (input) input.value = '';
                                     }}

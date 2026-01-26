@@ -1,5 +1,3 @@
-'use client';
-
 import React, { useState, useEffect } from 'react';
 import {
     getProjectPost, getCommunityPost,
@@ -9,8 +7,8 @@ import {
     updateCommunityPost, updateProjectPost,
     getCurrentUser
 } from '@/src/models/api';
-import type { Post, User } from '@/src/models/types';
-import { ArrowLeft, Loader2, Send, Trash2, Clock, User as UserIcon } from 'lucide-react';
+import type { Post, PostComment, User } from '@/src/models/types';
+import { ArrowLeft, Loader2, User as UserIcon, Send, Trash2, Clock } from 'lucide-react';
 import { getImageUrl } from '@/src/models/utils/image';
 
 interface PostDetailProps {
@@ -59,7 +57,7 @@ export const PostDetail: React.FC<PostDetailProps> = ({ postId, mode, onBack }) 
             } else {
                 await deleteProjectPost(postId);
             }
-            onBack();
+            onBack(); // 목록으로 돌아가기
         } catch (error) {
             console.error('Failed to delete post:', error);
             alert('게시글 삭제에 실패했습니다.');
@@ -80,6 +78,7 @@ export const PostDetail: React.FC<PostDetailProps> = ({ postId, mode, onBack }) 
                 newComment = await createProjectComment(postId, { content: commentContent });
             }
 
+            // 댓글 목록 업데이트
             setPost(prev => prev ? {
                 ...prev,
                 comments: [newComment, ...(prev.comments || [])]
@@ -169,11 +168,11 @@ export const PostDetail: React.FC<PostDetailProps> = ({ postId, mode, onBack }) 
     return (
         <div className="flex flex-col h-full animate-in fade-in slide-in-from-right-4 duration-300">
             {/* Header */}
-            <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-200/50 dark:border-white/5">
+            <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-200/50 dark:border-white/10">
                 <div className="flex items-center gap-4 flex-1 min-w-0">
                     <button
                         onClick={onBack}
-                        className="p-2 hover:bg-gray-100 dark:hover:bg-white/10 rounded-xl transition-colors flex-shrink-0"
+                        className="p-2 hover:bg-gray-100 dark:hover:bg-white/10 rounded-lg transition-colors"
                     >
                         <ArrowLeft size={24} className="text-gray-600 dark:text-gray-300" />
                     </button>
@@ -190,6 +189,7 @@ export const PostDetail: React.FC<PostDetailProps> = ({ postId, mode, onBack }) 
                     )}
                 </div>
 
+                {/* 작성자 본인일 경우 처리 (수정/삭제) */}
                 {currentUser && post.user_id === currentUser.id && (
                     <div className="flex items-center gap-2">
                         {isEditing ? (
@@ -233,16 +233,16 @@ export const PostDetail: React.FC<PostDetailProps> = ({ postId, mode, onBack }) 
             <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
                 {/* Post Info */}
                 <div className="flex items-center gap-3 mb-6">
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white text-sm font-bold shadow-md overflow-hidden">
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white text-sm font-bold shadow-md">
                         {post.user?.profile_image ? (
                             <img src={getImageUrl(post.user.profile_image)} alt={post.user.name} className="w-full h-full object-cover rounded-full" />
                         ) : (
-                            <UserIcon size={20} />
+                            (post.user?.nickname || post.user?.name || '?').slice(0, 1)
                         )}
                     </div>
                     <div>
                         <div className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                            {post.user?.nickname || post.user?.name || post.user_name || '알 수 없음'}
+                            {post.user?.nickname || post.user?.name || '알 수 없음'}
                             <span className="text-xs font-normal text-gray-400 px-2 py-0.5 rounded-full bg-gray-100 dark:bg-white/10">작성자</span>
                         </div>
                         <div className="flex items-center gap-2 text-xs text-gray-400 mt-0.5">
@@ -259,17 +259,6 @@ export const PostDetail: React.FC<PostDetailProps> = ({ postId, mode, onBack }) 
                         </div>
                     </div>
                 </div>
-
-                {/* Post Image (Community only) */}
-                {post.image_url && (
-                    <div className="mb-6 rounded-xl overflow-hidden">
-                        <img
-                            src={getImageUrl(post.image_url)}
-                            alt="게시글 이미지"
-                            className="w-full max-h-96 object-contain bg-gray-100 dark:bg-gray-800"
-                        />
-                    </div>
-                )}
 
                 {/* Post Content */}
                 {isEditing ? (
@@ -311,17 +300,17 @@ export const PostDetail: React.FC<PostDetailProps> = ({ postId, mode, onBack }) 
                     <div className="space-y-4">
                         {post.comments?.map((comment) => (
                             <div key={comment.id} className="flex gap-3 p-4 bg-gray-50 dark:bg-white/5 rounded-xl group">
-                                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white flex-shrink-0 overflow-hidden">
+                                <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-xs font-bold text-gray-500 dark:text-gray-300 flex-shrink-0">
                                     {comment.user?.profile_image ? (
                                         <img src={getImageUrl(comment.user.profile_image)} alt={comment.user.name} className="w-full h-full object-cover rounded-full" />
                                     ) : (
-                                        <UserIcon size={16} />
+                                        (comment.user?.nickname || comment.user?.name || '?').slice(0, 1)
                                     )}
                                 </div>
                                 <div className="flex-1">
                                     <div className="flex items-center justify-between mb-1">
                                         <span className="font-bold text-sm text-gray-900 dark:text-white">
-                                            {comment.user?.nickname || comment.user?.name || comment.user_name || '익명'}
+                                            {comment.user?.nickname || comment.user?.name || '익명'}
                                         </span>
                                         <div className="flex items-center gap-2">
                                             <span className="text-xs text-gray-400">
