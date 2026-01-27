@@ -214,6 +214,42 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
     }, [groups]);
 
     // ============================================
+    // [Race Condition Guard] 상호작용 중인 엔티티 ID 추적
+    // 드래그 중인 카드/그룹의 ID를 Set으로 관리하여
+    // 서버 응답(롤백 포함)이 해당 엔티티를 덮어쓰지 않도록 함
+    // ============================================
+    const interactingEntitiesRef = useRef<Set<number>>(new Set());
+
+    // 엔티티 Lock 여부 확인 함수 (usePendingSync에 전달)
+    const isEntityLocked = useCallback((entityId: number): boolean => {
+        return interactingEntitiesRef.current.has(entityId);
+    }, []);
+
+    // 엔티티 Lock 추가
+    const lockEntity = useCallback((entityId: number) => {
+        interactingEntitiesRef.current.add(entityId);
+        console.log('[Guard] Entity locked:', entityId, '| Current locks:', Array.from(interactingEntitiesRef.current));
+    }, []);
+
+    // 엔티티 Lock 해제
+    const unlockEntity = useCallback((entityId: number) => {
+        interactingEntitiesRef.current.delete(entityId);
+        console.log('[Guard] Entity unlocked:', entityId, '| Current locks:', Array.from(interactingEntitiesRef.current));
+    }, []);
+
+    // 여러 엔티티 한번에 Lock
+    const lockEntities = useCallback((entityIds: number[]) => {
+        entityIds.forEach(id => interactingEntitiesRef.current.add(id));
+        console.log('[Guard] Entities locked:', entityIds, '| Current locks:', Array.from(interactingEntitiesRef.current));
+    }, []);
+
+    // 여러 엔티티 한번에 Unlock
+    const unlockEntities = useCallback((entityIds: number[]) => {
+        entityIds.forEach(id => interactingEntitiesRef.current.delete(id));
+        console.log('[Guard] Entities unlocked:', entityIds, '| Current locks:', Array.from(interactingEntitiesRef.current));
+    }, []);
+
+    // ============================================
     // Optimistic UI: 카드 동기화 큐 관리 (Batch 모드)
     // ============================================
     const {
@@ -285,6 +321,8 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
 
             await batchUpdateCardPositions(sanitizedPayloads);
         },
+        // [Race Condition Guard] 드래그 중인 카드는 롤백하지 않음
+        isEntityLocked,
     });
 
     // ============================================
@@ -310,6 +348,8 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                     : g
             ));
         },
+        // [Race Condition Guard] 드래그 중인 그룹은 롤백하지 않음
+        isEntityLocked,
     });
 
     // 통합 동기화 상태 (카드 + 그룹)
@@ -867,6 +907,18 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
             }
             if (key === 'escape') {
                 // ESC로 드래그 취소
+                // [Race Condition Guard] 드래그 중인 엔티티들 Lock 해제
+                if (dragContext) {
+                    unlockEntity(dragContext.taskId);
+                }
+                if (freeDragState) {
+                    unlockEntity(freeDragState.id);
+                }
+                if (groupDragState) {
+                    unlockEntity(groupDragState.id);
+                    unlockEntities(groupDragState.containedTaskIds.map(t => t.id));
+                }
+
                 cancelDrag();
                 setFreeDragState(null);
                 setGroupDragState(null);
@@ -876,7 +928,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [selectedTaskIds, activeBoardId, groups, onGroupsUpdate, onTasksUpdate, cancelDrag, gridConfig, queueBatchCardChange, handleCreateNewTask, handleDeleteSelectedTasks]); // [최적화] tasks 의존성 제거 (tasksRef 사용)
+    }, [selectedTaskIds, activeBoardId, groups, onGroupsUpdate, onTasksUpdate, cancelDrag, gridConfig, queueBatchCardChange, handleCreateNewTask, handleDeleteSelectedTasks, dragContext, freeDragState, groupDragState, unlockEntity, unlockEntities]); // [최적화] tasks 의존성 제거 (tasksRef 사용)
 
     useEffect(() => {
         const handleClickOutside = (evt: MouseEvent) => {
@@ -961,6 +1013,9 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
 
         const { taskId, cardRect } = pendingCardDrag;
 
+        // [Race Condition Guard] 카드 Lock
+        lockEntity(taskId);
+
         startDrag(taskId, pendingCardDrag.startX, pendingCardDrag.startY, cardRect);
 
         const container = containerRef.current;
@@ -971,7 +1026,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         });
 
         setPendingCardDrag(null);
-    }, [pendingCardDrag, startDrag]);
+    }, [pendingCardDrag, startDrag, lockEntity]);
 
     // 그룹 또는 자유 카드 드래그 시작
     const handlePointerDown = (e: React.PointerEvent, task?: Task, group?: Group) => {
@@ -1027,6 +1082,10 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                 .filter(g => g.parentId === group.id)
                 .map(g => ({ id: g.id, initialX: g.x, initialY: g.y }));
 
+            // [Race Condition Guard] 그룹 및 포함된 카드들 Lock
+            lockEntity(group.id);
+            lockEntities(containedTasks.map(t => t.id));
+
             setGroupDragState({
                 id: group.id,
                 startX: e.clientX,
@@ -1051,6 +1110,10 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
 
             // 자유 배치 카드
             (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+
+            // [Race Condition Guard] 카드 Lock
+            lockEntity(task.id);
+
             setFreeDragState({ id: task.id, startX: e.clientX, startY: e.clientY, initialTaskX: task.x || 0, initialTaskY: task.y || 0 });
             e.stopPropagation();
             setActiveMenu(null);
@@ -1329,6 +1392,9 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
 
         // SortableGrid 드래그 종료 - 현재 드래그 위치 전달 (비동기 대기 없음)
         if (dragContext) {
+            // [Race Condition Guard] 카드 Lock 해제
+            unlockEntity(dragContext.taskId);
+
             endDrag(sortableDragPos ?? undefined);
             setSortableDragPos(null);
             return;
@@ -1394,6 +1460,10 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                     saveTaskPosition(freeDragState.id, task.x, task.y, snapshot);
                 }
             }
+
+            // [Race Condition Guard] 카드 Lock 해제
+            unlockEntity(freeDragState.id);
+
             setFreeDragState(null);
             setFreeCardTargetGroupId(null); // 하이라이트 초기화
         }
@@ -1493,6 +1563,11 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                     }
                 }
             }
+
+            // [Race Condition Guard] 그룹 및 포함된 카드들 Lock 해제
+            unlockEntity(groupDragState.id);
+            unlockEntities(groupDragState.containedTaskIds.map(t => t.id));
+
             setGroupDragState(null);
         }
         if (connectionDraft) setConnectionDraft(null);
