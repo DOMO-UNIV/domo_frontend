@@ -75,7 +75,7 @@ export const PostList: React.FC<PostListProps> = ({ posts, onPostClick, layout =
                             {/* Image or Placeholder Content */}
                             <div className="transform group-hover:scale-105 transition-transform duration-500 w-full h-full flex items-center justify-center">
                                 {post.image_url ? (
-                                    <img src={post.image_url} alt={post.title} className="w-full h-full object-cover" />
+                                    <img src={getImageUrl(post.image_url)} alt={post.title} className="w-full h-full object-cover" />
                                 ) : (
                                     <h3 className="text-6xl font-black text-black/10 dark:text-white/10 select-none">
                                         {post.title.slice(0, 1)}
