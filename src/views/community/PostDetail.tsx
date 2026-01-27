@@ -265,13 +265,25 @@ export const PostDetail: React.FC<PostDetailProps> = ({ postId, mode, onBack }) 
                     <textarea
                         value={editContent}
                         onChange={(e) => setEditContent(e.target.value)}
-                        className="w-full h-64 p-4 mb-12 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 resize-none text-gray-800 dark:text-gray-200 leading-relaxed custom-scrollbar"
+                        className="w-full h-64 p-4 mb-6 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 resize-none text-gray-800 dark:text-gray-200 leading-relaxed custom-scrollbar"
                         placeholder="내용을 입력하세요..."
                     />
                 ) : (
-                    <div className="prose dark:prose-invert max-w-none mb-12 text-gray-800 dark:text-gray-200 leading-relaxed whitespace-pre-line">
-                        {post.content}
-                    </div>
+                    <>
+                        {/* Post Image */}
+                        {post.image_url && (
+                            <div className="mb-6 rounded-xl overflow-hidden border border-gray-200 dark:border-white/10">
+                                <img
+                                    src={getImageUrl(post.image_url)}
+                                    alt={post.title}
+                                    className="w-full max-h-[500px] object-contain bg-gray-50 dark:bg-white/5"
+                                />
+                            </div>
+                        )}
+                        <div className="prose dark:prose-invert max-w-none mb-12 text-gray-800 dark:text-gray-200 leading-relaxed whitespace-pre-line">
+                            {post.content}
+                        </div>
+                    </>
                 )}
 
                 {/* Comments Section */}
