@@ -1404,11 +1404,20 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
 
         // SortableGrid 드래그 종료 - 현재 드래그 위치 전달 (비동기 대기 없음)
         if (dragContext) {
-            // [Race Condition Guard] 카드 Lock 해제
-            unlockEntity(dragContext.taskId);
+            // [Race Condition Guard] flush 후 Lock 해제
+            const cardId = dragContext.taskId;
 
             endDrag(sortableDragPos ?? undefined);
             setSortableDragPos(null);
+
+            void (async () => {
+                try {
+                    await flushCardChanges();
+                } finally {
+                    unlockEntity(cardId);
+                    console.log('[Guard] Sortable card drag complete - Lock released after flush');
+                }
+            })();
             return;
         }
 
@@ -1458,13 +1467,15 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                         { taskId: task.id, x: gridPos.x, y: gridPos.y, column_id: targetGroup.id },
                         snapshot,
                         async (payload) => {
-                            if (onTaskUpdate) {
-                                await onTaskUpdate(payload.taskId, {
-                                    column_id: payload.column_id ?? undefined,
-                                    x: payload.x,
-                                    y: payload.y
-                                });
-                            }
+                            // [FIX] usePendingSync의 batchApiCall을 사용하므로 여기서 API 호출 불필요
+                            // onTaskUpdate는 낙관적 업데이트를 위해 사용됨
+                            // 단, Batch 모드가 아닌 단건 모드이므로 API 호출 필요
+                            await batchUpdateCardPositions([{
+                                id: payload.taskId,
+                                x: payload.x,
+                                y: payload.y,
+                                column_id: payload.column_id ?? null,
+                            }]);
                         }
                     );
                 } else {
@@ -1473,11 +1484,19 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                 }
             }
 
-            // [Race Condition Guard] 카드 Lock 해제
-            unlockEntity(freeDragState.id);
-
+            // [Race Condition Guard] flush 후 Lock 해제
+            const cardId = freeDragState.id;
             setFreeDragState(null);
             setFreeCardTargetGroupId(null); // 하이라이트 초기화
+
+            void (async () => {
+                try {
+                    await flushCardChanges();
+                } finally {
+                    unlockEntity(cardId);
+                    console.log('[Guard] Free card drag complete - Lock released after flush');
+                }
+            })();
         }
         if (groupDragState) {
             const draggedGroup = groups.find(g => g.id === groupDragState.id);
@@ -1555,32 +1574,53 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
 
                 // 이동량이 있을 때만 카드 위치 저장
                 if (effectiveDeltaX !== 0 || effectiveDeltaY !== 0) {
+                    // [FIX] Batch 모드 사용 - 여러 카드를 한 번에 동기화
+                    const batchItems: Array<{
+                        entityId: number;
+                        payload: CardPositionPayload;
+                        snapshot: CardPositionSnapshot;
+                    }> = [];
+
                     for (const containedTask of groupDragState.containedTaskIds) {
-                        const task = tasks.find(t => t.id === containedTask.id);
-                        if (task && onTaskUpdate) {
+                        const task = tasksRef.current.find(t => t.id === containedTask.id);
+                        if (task) {
                             const newX = containedTask.initialX + effectiveDeltaX;
                             const newY = containedTask.initialY + effectiveDeltaY;
 
-                            // 각 카드의 위치를 큐에 등록
-                            queueCardChange(
-                                'card-position',
-                                task.id,
-                                { taskId: task.id, x: newX, y: newY, column_id: task.column_id },
-                                { x: containedTask.initialX, y: containedTask.initialY, column_id: task.column_id },
-                                async (payload) => {
-                                    await onTaskUpdate(payload.taskId, { x: payload.x, y: payload.y });
-                                }
-                            );
+                            batchItems.push({
+                                entityId: task.id,
+                                payload: { taskId: task.id, x: newX, y: newY, column_id: task.column_id },
+                                snapshot: { x: containedTask.initialX, y: containedTask.initialY, column_id: task.column_id },
+                            });
                         }
+                    }
+
+                    if (batchItems.length > 0) {
+                        queueBatchCardChange(batchItems);
                     }
                 }
             }
 
-            // [Race Condition Guard] 그룹 및 포함된 카드들 Lock 해제
-            unlockEntity(groupDragState.id);
-            unlockEntities(groupDragState.containedTaskIds.map(t => t.id));
+            // [Race Condition Guard] Lock 해제 전 대기 중인 변경사항 동기화
+            // flush()가 완료될 때까지 Lock을 유지하여 롤백 방지
+            const groupId = groupDragState.id;
+            const containedCardIds = groupDragState.containedTaskIds.map(t => t.id);
 
+            // 상태 먼저 정리 (드래그 상태 해제)
             setGroupDragState(null);
+
+            // 비동기로 flush 후 Lock 해제 (UI 블로킹 방지)
+            void (async () => {
+                try {
+                    await flushCardChanges();
+                    await flushGroupChanges();
+                } finally {
+                    // flush 완료 후 Lock 해제 (성공/실패 무관)
+                    unlockEntity(groupId);
+                    unlockEntities(containedCardIds);
+                    console.log('[Guard] Group drag complete - Locks released after flush');
+                }
+            })();
         }
         if (connectionDraft) setConnectionDraft(null);
 
