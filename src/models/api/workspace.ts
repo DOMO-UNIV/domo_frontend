@@ -420,7 +420,7 @@ export function subscribeOnlineMembers(
 
   // SSE 연결: REALTIME_URL 사용 (개발환경 프록시 버퍼링 우회)
   const eventSource = new EventSource(
-      `${API_CONFIG.REALTIME_URL}/workspaces/${workspaceId}/online-members/stream`,
+      `${API_CONFIG.REALTIME_URL}/api/workspaces/${workspaceId}/online-members/stream`,
       { withCredentials: true }
   );
 
