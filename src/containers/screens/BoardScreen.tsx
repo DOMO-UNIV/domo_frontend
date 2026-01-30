@@ -2,7 +2,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Project, Task, Connection, Board, Group, ViewMode, Column, FileMetadata, Member, SocketConnectionState } from '@/src/models/types';
+import { Project, Task, Connection, Board, Group, ViewMode, Column, Member } from '@/src/models/types';
 import { BoardCanvas } from '@/src/views/board';
 import { CalendarView } from '@/src/views/calendar';
 import { TimelineView } from '@/src/views/timeline';
@@ -14,8 +14,6 @@ import { CommunityBoard } from '@/src/views/community';
 import { useUser } from '@/src/lib/contexts/UserContext';
 import { useBoardSocket } from '@/src/containers/hooks/board';
 import {
-    CARD_WIDTH,
-    CARD_HEIGHT,
     GRID_PADDING,
     GROUP_HEADER_HEIGHT,
     GROUP_DEFAULT_WIDTH,
@@ -48,16 +46,28 @@ import {
     Wifi, WifiOff, RefreshCw
 } from 'lucide-react';
 
+// ============================================
+// 상수 (컴포넌트 외부 - 매 렌더링마다 재생성 방지)
+// ============================================
+const COLUMN_GAP = 100;
+
+// ============================================
+// Props 타입
+// ============================================
 interface BoardScreenProps {
     project: Project;
     onBack: () => void;
 }
 
+// ============================================
+// 메인 컴포넌트
+// ============================================
 export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => {
-    // 현재 로그인한 사용자 정보
     const { user } = useUser();
 
+    // =========================================
     // 데이터 상태
+    // =========================================
     const [tasks, setTasks] = useState<Task[]>([]);
     const [connections, setConnections] = useState<Connection[]>([]);
     const [columns, setColumns] = useState<Column[]>([]);
@@ -65,48 +75,37 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
     const [activeBoardId, setActiveBoardId] = useState<number>(1);
     const [groups, setGroups] = useState<Group[]>([]);
 
-    // Ref로 최신 tasks 유지 (클로저 문제 방지)
+    // Ref로 최신 상태 유지 (클로저 문제 방지)
     const tasksRef = useRef<Task[]>(tasks);
-    useEffect(() => {
-        tasksRef.current = tasks;
-    }, [tasks]);
+    const connectionsRef = useRef<Connection[]>(connections);
+    useEffect(() => { tasksRef.current = tasks; }, [tasks]);
+    useEffect(() => { connectionsRef.current = connections; }, [connections]);
 
-    // 멤버 상태 (온라인 상태 포함)
     const [members, setMembers] = useState<Member[]>([]);
 
+    // =========================================
     // UI 상태
+    // =========================================
     const [viewMode, setViewMode] = useState<ViewMode>('board');
     const [selectedTask, setSelectedTask] = useState<Task | null>(null);
     const [snapToGrid, setSnapToGrid] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(true);
-
-    // Dock 관련 상태
     const [activeDockMenu, setActiveDockMenu] = useState('dashboard');
     const [showMembers, setShowMembers] = useState(false);
-
-    // 파일 패널 상태
     const [showFilePanel, setShowFilePanel] = useState(false);
-    const [draggingFile, setDraggingFile] = useState<FileMetadata | null>(null);
     const [filePanelRefreshKey, setFilePanelRefreshKey] = useState(0);
-
-    // 로딩 & 에러 상태
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
-    const [uploadingCardId, setUploadingCardId] = useState<number | null>(null);
 
     // =========================================
-    // WebSocket 실시간 동기화
+    // Optimistic Update 중복 방지
     // =========================================
-
-    // WebSocket 이벤트 핸들러 - Optimistic Update 중복 방지
-    // 본인이 방금 수행한 작업의 이벤트는 무시 (이미 로컬 상태 업데이트됨)
     const pendingOperationsRef = useRef<Set<string>>(new Set());
 
     const addPendingOperation = useCallback((type: string, id: number) => {
         const key = `${type}:${id}`;
         pendingOperationsRef.current.add(key);
-        // 5초 후 자동 제거 (타임아웃 방지)
         setTimeout(() => pendingOperationsRef.current.delete(key), 5000);
     }, []);
 
@@ -118,18 +117,15 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
         pendingOperationsRef.current.delete(`${type}:${id}`);
     }, []);
 
-    // WebSocket 이벤트 콜백
+    // =========================================
+    // WebSocket 이벤트 핸들러
+    // =========================================
     const handleSocketTaskCreated = useCallback((task: Task) => {
-        // Optimistic Update로 이미 추가된 경우 무시
         if (isPendingOperation('CARD_CREATED', task.id)) {
             removePendingOperation('CARD_CREATED', task.id);
             return;
         }
-        setTasks(prev => {
-            // 중복 방지
-            if (prev.some(t => t.id === task.id)) return prev;
-            return [...prev, task];
-        });
+        setTasks(prev => prev.some(t => t.id === task.id) ? prev : [...prev, task]);
     }, [isPendingOperation, removePendingOperation]);
 
     const handleSocketTaskUpdated = useCallback((task: Task) => {
@@ -138,7 +134,6 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
             return;
         }
         setTasks(prev => prev.map(t => t.id === task.id ? { ...t, ...task } : t));
-        // selectedTask도 업데이트
         setSelectedTask(prev => prev?.id === task.id ? { ...prev, ...task } : prev);
     }, [isPendingOperation, removePendingOperation]);
 
@@ -153,20 +148,16 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
 
     const handleSocketTasksBatchUpdated = useCallback((updatedTasks: Task[]) => {
         setTasks(prev => {
-            const updatedMap = new Map(updatedTasks.map(t => [t.id, t]));
-            return prev.map(t => updatedMap.has(t.id) ? { ...t, ...updatedMap.get(t.id)! } : t);
+            const map = new Map(updatedTasks.map(t => [t.id, t]));
+            return prev.map(t => map.has(t.id) ? { ...t, ...map.get(t.id)! } : t);
         });
     }, []);
 
     const handleSocketColumnCreated = useCallback((column: Column) => {
-        setColumns(prev => {
-            if (prev.some(c => c.id === column.id)) return prev;
-            return [...prev, column];
-        });
-        // Group도 추가
+        setColumns(prev => prev.some(c => c.id === column.id) ? prev : [...prev, column]);
         setGroups(prev => {
             if (prev.some(g => g.id === column.id)) return prev;
-            const newGroup: Group = {
+            return [...prev, {
                 id: column.id,
                 title: column.title,
                 x: column.localX ?? GRID_PADDING,
@@ -178,38 +169,30 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
                 depth: column.depth ?? 0,
                 color: column.color,
                 collapsed: column.collapsed,
-            };
-            return [...prev, newGroup];
+            }];
         });
     }, []);
 
     const handleSocketColumnUpdated = useCallback((column: Column) => {
         setColumns(prev => prev.map(c => c.id === column.id ? { ...c, ...column } : c));
-        // Group도 업데이트
-        setGroups(prev => prev.map(g => {
-            if (g.id !== column.id) return g;
-            return {
-                ...g,
-                title: column.title,
-                x: column.localX ?? g.x,
-                y: column.localY ?? g.y,
-                width: column.width ?? g.width,
-                height: column.height ?? g.height,
-                parentId: column.parentId ?? null,
-                depth: column.depth ?? 0,
-                color: column.color,
-                collapsed: column.collapsed,
-            };
+        setGroups(prev => prev.map(g => g.id !== column.id ? g : {
+            ...g,
+            title: column.title,
+            x: column.localX ?? g.x,
+            y: column.localY ?? g.y,
+            width: column.width ?? g.width,
+            height: column.height ?? g.height,
+            parentId: column.parentId ?? null,
+            depth: column.depth ?? 0,
+            color: column.color,
+            collapsed: column.collapsed,
         }));
     }, []);
 
     const handleSocketColumnDeleted = useCallback((columnId: number) => {
         setColumns(prev => prev.filter(c => c.id !== columnId));
         setGroups(prev => prev.filter(g => g.id !== columnId));
-        // 해당 컬럼의 카드들은 column_id를 제거
-        setTasks(prev => prev.map(t =>
-            t.column_id === columnId ? { ...t, column_id: undefined } : t
-        ));
+        setTasks(prev => prev.map(t => t.column_id === columnId ? { ...t, column_id: undefined } : t));
     }, []);
 
     const handleSocketConnectionCreated = useCallback((connection: Connection) => {
@@ -217,16 +200,11 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
             removePendingOperation('CONNECTION_CREATED', connection.id);
             return;
         }
-        setConnections(prev => {
-            if (prev.some(c => c.id === connection.id)) return prev;
-            return [...prev, connection];
-        });
+        setConnections(prev => prev.some(c => c.id === connection.id) ? prev : [...prev, connection]);
     }, [isPendingOperation, removePendingOperation]);
 
     const handleSocketConnectionUpdated = useCallback((connection: Connection) => {
-        setConnections(prev => prev.map(c =>
-            c.id === connection.id ? { ...c, ...connection } : c
-        ));
+        setConnections(prev => prev.map(c => c.id === connection.id ? { ...c, ...connection } : c));
     }, []);
 
     const handleSocketConnectionDeleted = useCallback((connectionId: number) => {
@@ -238,12 +216,10 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
     }, [isPendingOperation, removePendingOperation]);
 
     const handleSocketFileUploaded = useCallback(() => {
-        // 파일 패널 새로고침
         setFilePanelRefreshKey(prev => prev + 1);
     }, []);
 
     const handleSocketFileDeleted = useCallback((fileId: number) => {
-        // 모든 카드에서 해당 파일 제거
         setTasks(prev => prev.map(task => ({
             ...task,
             files: task.files?.filter(f => f.id !== fileId) || []
@@ -251,52 +227,37 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
         setFilePanelRefreshKey(prev => prev + 1);
     }, []);
 
+    // =========================================
     // WebSocket 훅 연결
+    // =========================================
     const {
         connectionState,
-        isConnected: isSocketConnected,
         lastError: socketError,
         reconnectAttempts,
         reconnect: reconnectSocket,
     } = useBoardSocket({
         projectId: project.id,
         currentUserId: user?.id,
-        enabled: !isLoading, // 초기 로딩 완료 후 연결
-
+        enabled: !isLoading,
         onTaskCreated: handleSocketTaskCreated,
         onTaskUpdated: handleSocketTaskUpdated,
         onTaskDeleted: handleSocketTaskDeleted,
         onTasksBatchUpdated: handleSocketTasksBatchUpdated,
-
         onColumnCreated: handleSocketColumnCreated,
         onColumnUpdated: handleSocketColumnUpdated,
         onColumnDeleted: handleSocketColumnDeleted,
-
         onConnectionCreated: handleSocketConnectionCreated,
         onConnectionUpdated: handleSocketConnectionUpdated,
         onConnectionDeleted: handleSocketConnectionDeleted,
-
         onFileUploaded: handleSocketFileUploaded,
         onFileDeleted: handleSocketFileDeleted,
-
-        onConnected: () => {
-            console.log('[BoardScreen] WebSocket connected');
-        },
-        onDisconnected: () => {
-            console.log('[BoardScreen] WebSocket disconnected');
-        },
-        onError: (error) => {
-            console.error('[BoardScreen] WebSocket error:', error);
-        },
     });
 
     // =========================================
-    // 멤버 및 온라인 상태 로딩 (SSE 구독 방식)
+    // 멤버 및 온라인 상태 로딩
     // =========================================
-
     useEffect(() => {
         if (!project.workspace_id) return;
-
         let cleanup: (() => void) | null = null;
         let loadedMembers: Member[] = [];
 
@@ -305,120 +266,67 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
                 const allMembers = await getBoardMembers(project.id);
                 loadedMembers = allMembers.map(m => ({ ...m, isOnline: false }));
                 setMembers(loadedMembers);
-
                 cleanup = subscribeOnlineMembers(
                     project.workspace_id!,
                     (onlineUsers) => {
                         const onlineIds = new Set(onlineUsers.map(u => u.id));
-                        setMembers(prev => {
-                            const base = prev.length > 0 ? prev : loadedMembers;
-                            return base.map(member => ({
-                                ...member,
-                                isOnline: onlineIds.has(member.id),
-                            }));
-                        });
+                        setMembers(prev => (prev.length > 0 ? prev : loadedMembers).map(m => ({
+                            ...m,
+                            isOnline: onlineIds.has(m.id),
+                        })));
                     },
-                    () => {
-                        // SSE connection error - silently handled
-                    }
+                    () => {}
                 );
-            } catch {
-                // Failed to load members - silently handled
-            }
+            } catch {}
         };
-
         void initMembers();
-
         return () => cleanup?.();
     }, [project.id, project.workspace_id]);
 
     // =========================================
-    // 컬럼 → Group 변환 상수 (중앙화된 상수 사용)
+    // 컬럼 → Group 변환
     // =========================================
-    const COLUMN_GAP = 100;
-
-    // =========================================
-    // 컬럼 → Group 변환 (백엔드 데이터 우선)
-    // =========================================
-    const generateGroupsFromColumns = useCallback((
-        columnsData: Column[],
-        tasksData: Task[]
-    ): Group[] => {
-        const sortedColumns = [...columnsData].sort((a, b) => a.order - b.order);
+    const generateGroupsFromColumns = useCallback((columnsData: Column[]): Group[] => {
+        const sorted = [...columnsData].sort((a, b) => a.order - b.order);
         let fallbackX = GRID_PADDING;
 
-        return sortedColumns.map((column) => {
-            // 백엔드에 저장된 위치/크기가 있으면 그대로 사용
-            const hasBackendPosition = column.localX !== undefined && column.localX !== 0
-                || column.localY !== undefined && column.localY !== 0
-                || column.width !== undefined
-                || column.height !== undefined;
+        return sorted.map((col) => {
+            const hasPos = col.localX || col.localY || col.width || col.height;
+            const x = hasPos ? (col.localX ?? fallbackX) : fallbackX;
+            const y = hasPos ? (col.localY ?? GRID_PADDING + GROUP_HEADER_HEIGHT) : GRID_PADDING + GROUP_HEADER_HEIGHT;
+            const w = col.width ?? GROUP_DEFAULT_WIDTH;
+            const h = col.height ?? GROUP_DEFAULT_HEIGHT;
+            fallbackX = x + w + COLUMN_GAP;
 
-            let groupX: number;
-            let groupY: number;
-            let groupWidth: number;
-            let groupHeight: number;
-
-            if (hasBackendPosition) {
-                // 백엔드 데이터 우선 사용
-                groupX = column.localX ?? fallbackX;
-                groupY = column.localY ?? (GRID_PADDING + GROUP_HEADER_HEIGHT);
-                groupWidth = column.width ?? GROUP_DEFAULT_WIDTH;
-                groupHeight = column.height ?? GROUP_DEFAULT_HEIGHT;
-            } else {
-                // 백엔드 데이터 없으면 순차 배치 (fallback)
-                groupX = fallbackX;
-                groupY = GRID_PADDING + GROUP_HEADER_HEIGHT;
-                groupWidth = GROUP_DEFAULT_WIDTH;
-                groupHeight = GROUP_DEFAULT_HEIGHT;
-            }
-
-            // 다음 컬럼 fallback 위치 계산
-            fallbackX = groupX + groupWidth + COLUMN_GAP;
-
-            const group: Group = {
-                id: column.id,
-                title: column.title,
-                x: groupX,
-                y: groupY,
-                width: groupWidth,
-                height: groupHeight,
+            return {
+                id: col.id,
+                title: col.title,
+                x, y, width: w, height: h,
                 projectId: project.id,
-                parentId: column.parentId ?? null,
-                depth: column.depth ?? 0,
-                color: column.color,
-                collapsed: column.collapsed,
+                parentId: col.parentId ?? null,
+                depth: col.depth ?? 0,
+                color: col.color,
+                collapsed: col.collapsed,
             };
-
-            return group;
         });
     }, [project.id]);
 
     // =========================================
-    // 데이터 로딩
+    // 초기 데이터 로딩
     // =========================================
-
     const loadProjectData = useCallback(async () => {
         setIsLoading(true);
         setError(null);
-
         try {
             const [tasksData, connectionsData, columnsData] = await Promise.all([
                 getTasks(project.id),
                 getConnections(project.id),
                 getColumns(project.id),
             ]);
-
-            // 컬럼 + 카드 위치 기반으로 Groups 생성
-            const generatedGroups = generateGroupsFromColumns(columnsData, tasksData);
-
-            // 좌표 시스템: 절대 좌표 통일
-            // 백엔드에서 받은 x, y를 절대 좌표로 그대로 사용
-            // 변환 로직 제거 - 데이터 일관성 유지
             setTasks(tasksData);
             setConnections(connectionsData);
             setColumns(columnsData);
-            setGroups(generatedGroups);
+            setGroups(generateGroupsFromColumns(columnsData));
         } catch (err) {
             console.error('Failed to load project data:', err);
             setError('프로젝트 데이터를 불러오는데 실패했습니다.');
@@ -427,62 +335,32 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
         }
     }, [project.id, generateGroupsFromColumns]);
 
-    useEffect(() => {
-        void loadProjectData();
-    }, [loadProjectData]);
+    useEffect(() => { void loadProjectData(); }, [loadProjectData]);
 
     // =========================================
-    // 기본 컬럼 ID 가져오기 (첫 번째 컬럼 = "할 일")
+    // 헬퍼 함수
     // =========================================
     const getDefaultColumnId = useCallback((): number | null => {
         if (columns.length === 0) return null;
-
-        // "할 일" 컬럼 우선 찾기
-        const todoColumn = columns.find(col =>
-            col.title.includes('할 일') ||
-            col.status === 'todo' ||
-            col.order === 0
-        );
-
-        return todoColumn?.id || columns[0].id;
+        const todo = columns.find(c => c.title.includes('할 일') || c.status === 'todo' || c.order === 0);
+        return todo?.id || columns[0].id;
     }, [columns]);
 
-    // =========================================
-    // 컬럼 ID로 컬럼 정보 가져오기
-    // =========================================
-    const getColumnById = useCallback((columnId: number): Column | undefined => {
-        return columns.find(col => col.id === columnId);
-    }, [columns]);
+    const getColumnById = useCallback((id: number) => columns.find(c => c.id === id), [columns]);
 
     // =========================================
     // 태스크 핸들러
     // =========================================
-
-    // ✅ 보드 내 태스크 업데이트 (로컬 상태만) - 중복 방지
     const handleBoardTasksUpdate = useCallback((boardTasks: Task[]) => {
         setTasks(prev => {
-            // 현재 보드가 아닌 태스크들
-            const otherBoardTasks = prev.filter(t =>
-                t.boardId !== activeBoardId && t.boardId !== project.id
-            );
-
-            // 중복 제거: boardTasks에서 고유한 ID만 유지
-            const uniqueBoardTasks = boardTasks.filter((task, index, self) =>
-                index === self.findIndex(t => t.id === task.id)
-            );
-
-            return [...otherBoardTasks, ...uniqueBoardTasks];
+            const other = prev.filter(t => t.boardId !== activeBoardId && t.boardId !== project.id);
+            const unique = boardTasks.filter((t, i, s) => i === s.findIndex(x => x.id === t.id));
+            return [...other, ...unique];
         });
     }, [activeBoardId, project.id]);
 
-    // ✅ 태스크 생성 - 컬럼 없이도 생성 가능
     const handleTaskCreate = useCallback(async (taskData: Partial<Task>): Promise<Task> => {
-        // column_id가 명시적으로 null이면 자유 배치 (그룹에 귀속 안 함)
-        // undefined일 때만 기본 컬럼 사용
-        const columnId = taskData.column_id === null
-            ? undefined
-            : (taskData.column_id ?? getDefaultColumnId() ?? undefined);
-
+        const columnId = taskData.column_id === null ? undefined : (taskData.column_id ?? getDefaultColumnId() ?? undefined);
         const newTaskData: Omit<Task, 'id'> = {
             title: taskData.title || '새로운 카드',
             status: taskData.status || 'todo',
@@ -491,7 +369,7 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
             boardId: project.id,
             description: taskData.description,
             content: taskData.content,
-            column_id: columnId, // 컬럼 없으면 undefined
+            column_id: columnId,
             taskType: taskData.taskType,
             card_type: taskData.card_type,
             time: taskData.time,
@@ -504,385 +382,180 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
             assignees: taskData.assignees || [],
         };
 
-        try {
-            const newTask = await createTask(project.id, newTaskData);
-            // 기존 태스크 목록에 새 태스크 추가 (중복 방지)
-            setTasks(prev => {
-                const filtered = prev.filter(t => t.id !== newTask.id);
-                return [...filtered, newTask];
-            });
-            return newTask;
-        } catch (err) {
-            console.error('Failed to create task:', err);
-            throw err;
-        }
-    }, [project.id, getDefaultColumnId]);
+        const newTask = await createTask(project.id, newTaskData);
+        addPendingOperation('CARD_CREATED', newTask.id);
+        setTasks(prev => [...prev.filter(t => t.id !== newTask.id), newTask]);
+        return newTask;
+    }, [project.id, getDefaultColumnId, addPendingOperation]);
 
-    // 태스크 업데이트 - tasksRef로 최신 상태 참조
     const handleTaskUpdate = useCallback(async (taskId: number, updates: Partial<Task>): Promise<void> => {
-        // tasksRef에서 원본 task 찾기 (동기적으로 즉시 참조)
-        const originalTask = tasksRef.current.find(t => t.id === taskId);
+        const original = tasksRef.current.find(t => t.id === taskId);
+        if (!original) return;
 
-        if (!originalTask) {
-            console.error('Task not found:', taskId);
-            return;
-        }
-
-        // 낙관적 UI 업데이트
-        setTasks(prev => {
-            const updated = prev.map(t => t.id === taskId ? { ...t, ...updates } : t);
-            // 중복 제거
-            return updated.filter((task, index, self) =>
-                index === self.findIndex(t => t.id === task.id)
-            );
-        });
+        addPendingOperation('CARD_UPDATED', taskId);
+        setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...updates } : t)
+            .filter((t, i, s) => i === s.findIndex(x => x.id === t.id)));
 
         try {
             setIsSaving(true);
             await updateTask(taskId, updates);
         } catch (err) {
-            console.error('Failed to update task:', err);
-            // 롤백 - 원래 태스크로 복원
-            setTasks(prev => {
-                const rolledBack = prev.map(t => t.id === taskId ? originalTask : t);
-                return rolledBack.filter((t, index, self) =>
-                    index === self.findIndex(item => item.id === t.id)
-                );
-            });
+            removePendingOperation('CARD_UPDATED', taskId);
+            setTasks(prev => prev.map(t => t.id === taskId ? original : t)
+                .filter((t, i, s) => i === s.findIndex(x => x.id === t.id)));
             throw err;
         } finally {
             setIsSaving(false);
         }
-    }, []);  // 의존성 비움 - tasksRef는 항상 최신
+    }, [addPendingOperation, removePendingOperation]);
 
-    // 태스크를 특정 컬럼으로 이동
-    const handleMoveTaskToColumn = useCallback(async (taskId: number, columnId: number): Promise<void> => {
-        const column = getColumnById(columnId);
-
-        if (!column) {
-            console.error('Column not found');
-            return;
-        }
-
-        await handleTaskUpdate(taskId, {
-            column_id: columnId,
-            status: column.status,
-        });
+    const handleMoveTaskToColumn = useCallback(async (taskId: number, columnId: number) => {
+        const col = getColumnById(columnId);
+        if (col) await handleTaskUpdate(taskId, { column_id: columnId, status: col.status });
     }, [getColumnById, handleTaskUpdate]);
 
-    // 태스크 삭제
-    const handleTaskDelete = useCallback(async (taskId: number): Promise<void> => {
-        let previousTasks: Task[] = [];
-
-        // setTasks 콜백 내에서 이전 상태 캡처
-        setTasks(prev => {
-            previousTasks = prev;
-            return prev.filter(t => t.id !== taskId);
-        });
-
+    const handleTaskDelete = useCallback(async (taskId: number) => {
+        let prev: Task[] = [];
+        addPendingOperation('CARD_DELETED', taskId);
+        setTasks(p => { prev = p; return p.filter(t => t.id !== taskId); });
         try {
             await deleteTask(taskId);
-        } catch (err) {
-            console.error('Failed to delete task:', err);
-            // 롤백
-            setTasks(previousTasks);
-            throw err;
+        } catch {
+            removePendingOperation('CARD_DELETED', taskId);
+            setTasks(prev);
         }
-    }, []);  // 의존성 비움
+    }, [addPendingOperation, removePendingOperation]);
 
     // =========================================
     // 연결선 핸들러
     // =========================================
-
     const handleConnectionCreate = useCallback(async (
-        from: number,
-        to: number,
-        sourceHandle?: 'left' | 'right',
-        targetHandle?: 'left' | 'right'
+        from: number, to: number,
+        sourceHandle?: 'left' | 'right', targetHandle?: 'left' | 'right'
     ): Promise<Connection> => {
-        const newConnection: Omit<Connection, 'id'> = {
-            from,
-            to,
-            boardId: project.id,
-            style: 'solid',
-            shape: 'bezier',
-            sourceHandle: sourceHandle || 'right',
-            targetHandle: targetHandle || 'left',
-        };
+        const created = await createConnection(project.id, {
+            from, to, boardId: project.id, style: 'solid', shape: 'bezier',
+            sourceHandle: sourceHandle || 'right', targetHandle: targetHandle || 'left',
+        });
+        addPendingOperation('CONNECTION_CREATED', created.id);
+        setConnections(prev => [...prev, created]);
+        return created;
+    }, [project.id, addPendingOperation]);
 
-        try {
-            const created = await createConnection(project.id, newConnection);
-            setConnections(prev => [...prev, created]);
-            return created;
-        } catch (err) {
-            console.error('Failed to create connection:', err);
-            throw err;
-        }
-    }, [project.id]);
-
-    // Ref로 connections 최신 상태 유지 (낙관적 업데이트 롤백용)
-    const connectionsRef = useRef(connections);
-    useEffect(() => {
-        connectionsRef.current = connections;
-    }, [connections]);
-
-    const handleConnectionDelete = useCallback(async (connectionId: number): Promise<void> => {
-        // 롤백용 스냅샷을 ref에서 캡처 (의존성 제거)
-        const previousConnections = [...connectionsRef.current];
-
-        setConnections(prev => prev.filter(c => c.id !== connectionId));
-
+    const handleConnectionDelete = useCallback(async (connectionId: number) => {
+        const prev = [...connectionsRef.current];
+        addPendingOperation('CONNECTION_DELETED', connectionId);
+        setConnections(p => p.filter(c => c.id !== connectionId));
         try {
             await deleteConnection(project.id, connectionId);
-        } catch (err) {
-            console.error('Failed to delete connection:', err);
-            setConnections(previousConnections);
-            throw err;
+        } catch {
+            removePendingOperation('CONNECTION_DELETED', connectionId);
+            setConnections(prev);
         }
-    }, [project.id]); // connections 의존성 제거
+    }, [project.id, addPendingOperation, removePendingOperation]);
 
     const handleConnectionUpdate = useCallback(async (connectionId: number, updates: Partial<Connection>) => {
-        // 롤백용 스냅샷을 ref에서 캡처
-        const previousConnections = [...connectionsRef.current];
-
-        setConnections(prev => prev.map(c =>
-            c.id === connectionId ? { ...c, ...updates } : c
-        ));
-
+        const prev = [...connectionsRef.current];
+        setConnections(p => p.map(c => c.id === connectionId ? { ...c, ...updates } : c));
         try {
             await updateConnection(connectionId, updates);
-        } catch (err) {
-            console.error('Failed to update connection:', err);
-            // 실패 시 롤백
-            setConnections(previousConnections);
+        } catch {
+            setConnections(prev);
         }
-    }, []); // connections 의존성 제거
+    }, []);
 
     // =========================================
-    // 파일 드롭 핸들러
+    // 파일 핸들러 (WebSocket 자동 갱신)
     // =========================================
-
     const handleFileDropOnCard = useCallback(async (cardId: number, fileId: number) => {
-        try {
-            await attachFileToCard(cardId, fileId);
+        await attachFileToCard(cardId, fileId);
+    }, []);
 
-            // 카드의 files 배열 업데이트 (낙관적 업데이트는 복잡하므로 데이터 리로드)
-            // 실제로는 백엔드에서 반환된 카드 데이터로 업데이트하는 것이 좋음
-            const updatedTasks = await getTasks(project.id);
-            setTasks(updatedTasks);
-        } catch (err) {
-            console.error('Failed to attach file to card:', err);
-        }
-    }, [project.id]);
-
-    // 네이티브 파일 드롭 핸들러 (브라우저에서 직접 드래그한 파일)
     const handleNativeFileDrop = useCallback(async (cardId: number, files: File[]) => {
-        setUploadingCardId(cardId);
-        try {
-            // 파일 업로드 및 카드 연결을 병렬로 처리
-            await Promise.all(files.map(async (file) => {
-                const uploadedFile = await uploadFile(project.id, file);
-                await attachFileToCard(cardId, uploadedFile.id);
-            }));
-
-            // 데이터 리로드
-            const updatedTasks = await getTasks(project.id);
-            setTasks(updatedTasks);
-        } catch (err) {
-            console.error('Failed to upload and attach file:', err);
-        } finally {
-            setUploadingCardId(null);
-        }
+        await Promise.all(files.map(async (f) => {
+            const uploaded = await uploadFile(project.id, f);
+            await attachFileToCard(cardId, uploaded.id);
+        }));
     }, [project.id]);
 
-    // 배경에 파일 드롭 시 프로젝트 파일로 업로드
     const handleBackgroundFileDrop = useCallback(async (files: File[]) => {
-        try {
-            // 파일 업로드를 병렬로 처리
-            await Promise.all(files.map(file => uploadFile(project.id, file)));
-
-            // 파일 패널 열기 + 새로고침 트리거
-            setShowFilePanel(true);
-            setActiveDockMenu('files');
-            setFilePanelRefreshKey(prev => prev + 1);
-        } catch (err) {
-            console.error('Failed to upload file to project:', err);
-        }
+        await Promise.all(files.map(f => uploadFile(project.id, f)));
+        setShowFilePanel(true);
+        setActiveDockMenu('files');
     }, [project.id]);
 
-    // 프로젝트 파일 삭제 시 모든 카드에서 해당 파일 제거
     const handleFileDeleted = useCallback((fileId: number) => {
-        setTasks(prev => prev.map(task => ({
-            ...task,
-            files: task.files?.filter(f => f.id !== fileId) || []
-        })));
-
-        // selectedTask도 업데이트 (모달이 열려있을 경우)
-        setSelectedTask(prev => {
-            if (!prev) return null;
-            return {
-                ...prev,
-                files: prev.files?.filter(f => f.id !== fileId) || []
-            };
-        });
+        setTasks(prev => prev.map(t => ({ ...t, files: t.files?.filter(f => f.id !== fileId) || [] })));
+        setSelectedTask(prev => prev ? { ...prev, files: prev.files?.filter(f => f.id !== fileId) || [] } : null);
     }, []);
 
     // =========================================
-    // 보드 핸들러
+    // 보드/그룹 핸들러
     // =========================================
-
-    const handleSwitchBoard = useCallback((boardId: number) => {
-        setActiveBoardId(boardId);
-    }, []);
-
+    const handleSwitchBoard = useCallback((id: number) => setActiveBoardId(id), []);
     const handleAddBoard = useCallback(() => {
-        const newBoard: Board = {
-            id: Date.now(),
-            title: `보드 ${boards.length + 1}`,
-        };
-        setBoards(prev => [...prev, newBoard]);
-        setActiveBoardId(newBoard.id);
+        const b: Board = { id: Date.now(), title: `보드 ${boards.length + 1}` };
+        setBoards(prev => [...prev, b]);
+        setActiveBoardId(b.id);
     }, [boards.length]);
-
-    const handleRenameBoard = useCallback((boardId: number, title: string) => {
-        setBoards(prev => prev.map(b =>
-            b.id === boardId ? { ...b, title } : b
-        ));
+    const handleRenameBoard = useCallback((id: number, title: string) => {
+        setBoards(prev => prev.map(b => b.id === id ? { ...b, title } : b));
     }, []);
 
-    // =========================================
-    // 그룹 핸들러 (그룹 내 카드도 함께 이동)
-    // =========================================
-
-    // 그룹 업데이트 - 새 그룹 생성 및 parent_id 변경 시 백엔드 동기화
-    // 카드 귀속은 드래그 앤 드롭으로만 처리 (위치 기반 자동 귀속 제거)
-    // 🔧 [FIX] 그룹 생성 후 tasks의 column_id도 실제 ID로 교체
     const handleGroupsUpdate = useCallback(async (newGroups: Group[]): Promise<Map<number, number>> => {
-        // 1. 새로 추가된 그룹 찾기 (기존 groups에 없는 것)
         const existingIds = new Set(groups.map(g => g.id));
-        const addedGroups = newGroups.filter(g => !existingIds.has(g.id));
-
-        // 2. parent_id가 변경된 그룹 찾기
-        const parentChangedGroups = newGroups.filter(g => {
-            const existingGroup = groups.find(eg => eg.id === g.id);
-            return existingGroup && existingGroup.parentId !== g.parentId;
+        const added = newGroups.filter(g => !existingIds.has(g.id));
+        const parentChanged = newGroups.filter(g => {
+            const e = groups.find(x => x.id === g.id);
+            return e && e.parentId !== g.parentId;
         });
 
-        // 임시 ID → 실제 ID 매핑 저장
-        const idMapping = new Map<number, number>();
-
-        // 새 그룹이 있으면 백엔드에 컬럼 생성 (위치/크기 포함)
-        for (const newGroup of addedGroups) {
+        const idMap = new Map<number, number>();
+        for (const ng of added) {
             try {
-                const newColumn = await createColumn(project.id, {
-                    title: newGroup.title,
-                    order: columns.length,
-                    localX: newGroup.x,
-                    localY: newGroup.y,
-                    width: newGroup.width,
-                    height: newGroup.height,
+                const col = await createColumn(project.id, {
+                    title: ng.title, order: columns.length,
+                    localX: ng.x, localY: ng.y, width: ng.width, height: ng.height,
                 });
-
-                // 컬럼 목록에 추가
-                setColumns(prev => [...prev, newColumn]);
-
-                // ID 매핑 저장 (임시 ID → 실제 ID)
-                idMapping.set(newGroup.id, newColumn.id);
-
-                // 그룹 ID를 실제 컬럼 ID로 교체
-                newGroups = newGroups.map(g =>
-                    g.id === newGroup.id ? { ...g, id: newColumn.id } : g
-                );
-
-                if (process.env.NODE_ENV === 'development') console.log(`[BoardScreen] 그룹 ID 매핑: ${newGroup.id} → ${newColumn.id}`);
-            } catch (err) {
-                console.error('Failed to create column:', err);
-            }
+                setColumns(prev => [...prev, col]);
+                idMap.set(ng.id, col.id);
+                newGroups = newGroups.map(g => g.id === ng.id ? { ...g, id: col.id } : g);
+            } catch {}
         }
 
-        // 🔧 [FIX] tasks의 column_id도 실제 ID로 교체
-        if (idMapping.size > 0) {
-            setTasks(prev => prev.map(task => {
-                if (task.column_id && idMapping.has(task.column_id)) {
-                    const realId = idMapping.get(task.column_id)!;
-                    if (process.env.NODE_ENV === 'development') console.log(`[BoardScreen] 카드 ${task.id}의 column_id 교체: ${task.column_id} → ${realId}`);
-                    return { ...task, column_id: realId };
-                }
-                return task;
-            }));
+        if (idMap.size > 0) {
+            setTasks(prev => prev.map(t => t.column_id && idMap.has(t.column_id)
+                ? { ...t, column_id: idMap.get(t.column_id)! } : t));
         }
 
-        // parent_id가 변경된 그룹들 백엔드에 업데이트
-        for (const changedGroup of parentChangedGroups) {
-            try {
-                await updateGroup(changedGroup.id, {
-                    parentId: changedGroup.parentId,
-                    depth: changedGroup.depth,
-                });
-            } catch (err) {
-                console.error('Failed to update group parent_id:', changedGroup.id, err);
-            }
+        for (const cg of parentChanged) {
+            try { await updateGroup(cg.id, { parentId: cg.parentId, depth: cg.depth }); } catch {}
         }
 
         setGroups(newGroups);
-
-        // 매핑 정보 반환 (BoardCanvas에서 Batch 업데이트 시 사용)
-        return idMapping;
+        return idMap;
     }, [groups, columns, project.id]);
 
-    // =========================================
-    // 그룹 이동 핸들러 (핵심 재설계!)
-    // =========================================
-    // 새로운 좌표 시스템:
-    // - 그룹에 속한 카드의 x, y = 그룹 내 상대 좌표
-    // - 렌더링 시 절대 좌표 = group.x + card.x
-    // - 그룹 이동 시 그룹 위치만 서버에 저장 (1회 API)
-    // - 카드 위치는 그룹 내에서 드래그할 때만 변경
-    // =========================================
     const handleGroupMove = useCallback(async (groupId: number, newX: number, newY: number) => {
-        const group = groups.find(g => g.id === groupId);
-        if (!group) return;
-
-        // 로컬 상태만 업데이트 (카드 위치 변경 없음!)
-        // 카드의 x, y는 그룹 내 상대 좌표이므로 그룹 이동과 무관
-        setGroups(prev => prev.map(g =>
-            g.id === groupId ? { ...g, x: newX, y: newY } : g
-        ));
-
-        // 백엔드에 그룹 위치만 저장 (1회 API 호출)
+        const g = groups.find(x => x.id === groupId);
+        if (!g) return;
+        setGroups(prev => prev.map(x => x.id === groupId ? { ...x, x: newX, y: newY } : x));
         try {
             await updateGroup(groupId, { x: newX, y: newY });
-        } catch (err) {
-            console.error('Failed to save group position:', err);
-            // 롤백: 원래 위치로 복원
-            setGroups(prev => prev.map(g =>
-                g.id === groupId ? { ...g, x: group.x, y: group.y } : g
-            ));
+        } catch {
+            setGroups(prev => prev.map(x => x.id === groupId ? { ...x, x: g.x, y: g.y } : x));
         }
     }, [groups]);
 
-    // 그룹 삭제 핸들러
     const handleGroupDelete = useCallback(async (groupId: number) => {
-        const group = groups.find(g => g.id === groupId);
-        if (!group) return;
-
-        if (!confirm(`'${group.title}' 그룹을 삭제하시겠습니까?\n(카드들은 보드에 남아있습니다)`)) {
-            return;
-        }
-
+        const g = groups.find(x => x.id === groupId);
+        if (!g || !confirm(`'${g.title}' 그룹을 삭제하시겠습니까?\n(카드들은 보드에 남아있습니다)`)) return;
         try {
             await deleteGroup(groupId);
-
-            // 로컬 상태 업데이트
-            setGroups(prev => prev.filter(g => g.id !== groupId));
+            setGroups(prev => prev.filter(x => x.id !== groupId));
             setColumns(prev => prev.filter(c => c.id !== groupId));
-
-            // 그룹에 속했던 카드들의 column_id를 null로
-            setTasks(prev => prev.map(t =>
-                t.column_id === groupId ? { ...t, column_id: undefined } : t
-            ));
-        } catch (err) {
-            console.error('Failed to delete group:', err);
+            setTasks(prev => prev.map(t => t.column_id === groupId ? { ...t, column_id: undefined } : t));
+        } catch {
             alert('그룹 삭제에 실패했습니다.');
         }
     }, [groups]);
@@ -890,30 +563,18 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
     // =========================================
     // 기타 핸들러
     // =========================================
-
-    const handleTaskSelect = useCallback((task: Task) => {
-        setSelectedTask(task);
-    }, []);
-
+    const handleTaskSelect = useCallback((task: Task) => setSelectedTask(task), []);
     const handleTaskModalUpdate = useCallback(async (updates: Partial<Task>) => {
         if (!selectedTask) return;
-
         await handleTaskUpdate(selectedTask.id, updates);
         setSelectedTask(prev => prev ? { ...prev, ...updates } : null);
     }, [selectedTask, handleTaskUpdate]);
-
-    const handleToggleGrid = useCallback(() => {
-        setSnapToGrid(prev => !prev);
-    }, []);
-
-    const handleToggleTheme = useCallback(() => {
-        document.documentElement.classList.toggle('dark');
-    }, []);
+    const handleToggleGrid = useCallback(() => setSnapToGrid(prev => !prev), []);
+    const handleToggleTheme = useCallback(() => document.documentElement.classList.toggle('dark'), []);
 
     // =========================================
-    // 렌더링
+    // 렌더링: 로딩/에러
     // =========================================
-
     if (isLoading) {
         return (
             <div className="flex h-screen items-center justify-center bg-gray-50 dark:bg-black">
@@ -931,10 +592,7 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
                 <div className="flex flex-col items-center gap-4 max-w-md text-center">
                     <AlertCircle className="w-12 h-12 text-red-500" />
                     <p className="text-red-500 font-medium">{error}</p>
-                    <button
-                        onClick={loadProjectData}
-                        className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
-                    >
+                    <button onClick={loadProjectData} className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">
                         다시 시도
                     </button>
                 </div>
@@ -942,49 +600,41 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
         );
     }
 
-    // 현재 보드의 태스크만 필터링 - 중복 제거
+    // =========================================
+    // 필터링된 데이터
+    // =========================================
     const filteredTasks = tasks
         .filter(t => t.boardId === activeBoardId || t.boardId === project.id || activeBoardId === 1)
-        .filter((task, index, self) => index === self.findIndex(t => t.id === task.id));
+        .filter((t, i, s) => i === s.findIndex(x => x.id === t.id));
+    const filteredConnections = connections.filter(c => c.boardId === activeBoardId || c.boardId === project.id || activeBoardId === 1);
+    const filteredGroups = groups.filter(g => g.projectId === activeBoardId || g.projectId === project.id || activeBoardId === 1);
 
-    const filteredConnections = connections.filter(c =>
-        c.boardId === activeBoardId || c.boardId === project.id || activeBoardId === 1
-    );
-
-    const filteredGroups = groups.filter(g =>
-        g.projectId === activeBoardId || g.projectId === project.id || activeBoardId === 1
-    );
-
+    // =========================================
+    // 메인 렌더링
+    // =========================================
     return (
         <div className="flex h-screen bg-gray-50 dark:bg-black text-gray-900 dark:text-gray-100 font-sans overflow-hidden">
-            {/* Background Ambiance */}
+            {/* Background */}
             <div className="absolute inset-0 pointer-events-none z-0">
-                <div className="absolute top-[-10%] left-[-10%] w-[50vw] h-[50vw] bg-blue-400/5 dark:bg-blue-900/10 rounded-full blur-[120px]"></div>
-                <div className="absolute bottom-[-10%] right-[-10%] w-[50vw] h-[50vw] bg-purple-400/5 dark:bg-purple-900/10 rounded-full blur-[120px]"></div>
+                <div className="absolute top-[-10%] left-[-10%] w-[50vw] h-[50vw] bg-blue-400/5 dark:bg-blue-900/10 rounded-full blur-[120px]" />
+                <div className="absolute bottom-[-10%] right-[-10%] w-[50vw] h-[50vw] bg-purple-400/5 dark:bg-purple-900/10 rounded-full blur-[120px]" />
             </div>
 
-            {/* Floating Sidebar */}
-            <div className={`relative z-20 py-4 pl-4 transition-all duration-300 ease-[cubic-bezier(0.25,0.8,0.25,1)] ${sidebarOpen ? 'w-72' : 'w-20'}`}>
+            {/* Sidebar */}
+            <div className={`relative z-20 py-4 pl-4 transition-all duration-300 ${sidebarOpen ? 'w-72' : 'w-20'}`}>
                 <div className="glass-panel h-full rounded-[2rem] flex flex-col border border-white/20 dark:border-white/10 shadow-2xl overflow-hidden">
                     <div className="p-6 flex flex-col gap-6">
                         <div className="flex items-center justify-between">
-                            <div className={`flex items-center gap-3 font-bold text-xl text-gray-900 dark:text-white ${!sidebarOpen && 'hidden'} transition-opacity duration-200`}>
+                            <div className={`flex items-center gap-3 font-bold text-xl text-gray-900 dark:text-white ${!sidebarOpen && 'hidden'}`}>
                                 <Mascot size={32} />
                                 <span className="tracking-tight">DOMO</span>
                             </div>
-                            <button
-                                onClick={() => setSidebarOpen(!sidebarOpen)}
-                                className={`p-2 hover:bg-black/5 dark:hover:bg-white/10 rounded-full text-gray-500 transition-colors ${!sidebarOpen && 'mx-auto'}`}
-                            >
+                            <button onClick={() => setSidebarOpen(!sidebarOpen)} className={`p-2 hover:bg-black/5 dark:hover:bg-white/10 rounded-full text-gray-500 ${!sidebarOpen && 'mx-auto'}`}>
                                 {sidebarOpen ? <ChevronLeft size={20} /> : <ChevronRight size={20} />}
                             </button>
                         </div>
-
                         {sidebarOpen && (
-                            <button
-                                onClick={onBack}
-                                className="flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-gray-900 dark:hover:text-white transition-colors px-1 group"
-                            >
+                            <button onClick={onBack} className="flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-gray-900 dark:hover:text-white px-1 group">
                                 <ArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform" />
                                 <span>Back to Projects</span>
                             </button>
@@ -992,54 +642,36 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
                     </div>
 
                     {sidebarOpen && (
-                        <div className="px-6 pb-6 animate-in fade-in slide-in-from-left-4 duration-300">
+                        <div className="px-6 pb-6">
                             <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 ml-1">Current Project</div>
                             <div className="p-4 bg-white/50 dark:bg-white/5 rounded-2xl border border-white/20 shadow-sm backdrop-blur-sm">
                                 <div className="font-bold text-lg truncate mb-1" title={project.name}>{project.name}</div>
                                 <div className="text-xs text-gray-500 font-medium">{project.workspace}</div>
                                 <div className="text-xs text-gray-400 mt-2">
-                                    {filteredTasks.length}개의 카드 • {filteredConnections.length}개의 연결 • {columns.length}개의 컬럼
+                                    {filteredTasks.length}개 카드 • {filteredConnections.length}개 연결 • {columns.length}개 컬럼
                                 </div>
                             </div>
                         </div>
                     )}
 
                     <div className="flex-1 overflow-y-auto px-4 space-y-1">
-                        <button
-                            onClick={() => setViewMode('board')}
-                            className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-all duration-200 ${viewMode === 'board' ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30' : 'text-gray-600 dark:text-gray-400 hover:bg-black/5 dark:hover:bg-white/5'}`}
-                        >
-                            <LayoutGrid size={20} strokeWidth={viewMode === 'board' ? 2.5 : 2} />
-                            {sidebarOpen && <span className="font-medium">Board</span>}
-                        </button>
-                        <button
-                            onClick={() => setViewMode('calendar')}
-                            className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-all duration-200 ${viewMode === 'calendar' ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30' : 'text-gray-600 dark:text-gray-400 hover:bg-black/5 dark:hover:bg-white/5'}`}
-                        >
-                            <CalendarIcon size={20} strokeWidth={viewMode === 'calendar' ? 2.5 : 2} />
-                            {sidebarOpen && <span className="font-medium">Calendar</span>}
-                        </button>
-                        <button
-                            onClick={() => setViewMode('timeline')}
-                            className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-all duration-200 ${viewMode === 'timeline' ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30' : 'text-gray-600 dark:text-gray-400 hover:bg-black/5 dark:hover:bg-white/5'}`}
-                        >
-                            <StretchHorizontal size={20} strokeWidth={viewMode === 'timeline' ? 2.5 : 2} />
-                            {sidebarOpen && <span className="font-medium">Timeline</span>}
-                        </button>
-                        <button
-                            onClick={() => setViewMode('community')}
-                            className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-all duration-200 ${viewMode === 'community' ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30' : 'text-gray-600 dark:text-gray-400 hover:bg-black/5 dark:hover:bg-white/5'}`}
-                        >
-                            <MessageSquare size={20} strokeWidth={viewMode === 'community' ? 2.5 : 2} />
-                            {sidebarOpen && <span className="font-medium">Community</span>}
-                        </button>
+                        {([
+                            { mode: 'board', icon: LayoutGrid, label: 'Board' },
+                            { mode: 'calendar', icon: CalendarIcon, label: 'Calendar' },
+                            { mode: 'timeline', icon: StretchHorizontal, label: 'Timeline' },
+                            { mode: 'community', icon: MessageSquare, label: 'Community' },
+                        ] as const).map(({ mode, icon: Icon, label }) => (
+                            <button key={mode} onClick={() => setViewMode(mode)}
+                                    className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-all ${viewMode === mode ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30' : 'text-gray-600 dark:text-gray-400 hover:bg-black/5 dark:hover:bg-white/5'}`}>
+                                <Icon size={20} strokeWidth={viewMode === mode ? 2.5 : 2} />
+                                {sidebarOpen && <span className="font-medium">{label}</span>}
+                            </button>
+                        ))}
                     </div>
 
                     <div className="p-4 mt-auto">
-                        <button
-                            onClick={() => setViewMode('settings')}
-                            className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 transition-colors ${viewMode === 'settings' ? 'bg-gray-200 dark:bg-white/10 font-bold text-gray-900 dark:text-white' : ''}`}
-                        >
+                        <button onClick={() => setViewMode('settings')}
+                                className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 ${viewMode === 'settings' ? 'bg-gray-200 dark:bg-white/10 font-bold text-gray-900 dark:text-white' : ''}`}>
                             <Settings size={20} />
                             {sidebarOpen && <span>Settings</span>}
                         </button>
@@ -1047,79 +679,53 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
                 </div>
             </div>
 
-            {/* Main Content Area */}
+            {/* Main Content */}
             <div className="flex-1 flex flex-col h-full relative overflow-hidden z-10 p-4">
                 <div className="bg-white/40 dark:bg-black/40 backdrop-blur-3xl rounded-[2rem] border border-white/20 dark:border-white/5 shadow-inner h-full overflow-hidden relative">
-
-                    {/* 상태 인디케이터 영역 */}
+                    {/* Status Indicators */}
                     <div className="absolute top-4 right-4 z-50 flex items-center gap-2">
-                        {/* WebSocket 연결 상태 */}
                         {connectionState === 'connected' && (
                             <div className="flex items-center gap-1.5 bg-green-500/10 text-green-600 dark:text-green-400 px-2.5 py-1 rounded-full text-xs font-medium">
-                                <Wifi className="w-3.5 h-3.5" />
-                                <span>실시간</span>
+                                <Wifi className="w-3.5 h-3.5" /><span>실시간</span>
                             </div>
                         )}
                         {connectionState === 'connecting' && (
                             <div className="flex items-center gap-1.5 bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 px-2.5 py-1 rounded-full text-xs font-medium">
-                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                <span>연결 중...</span>
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" /><span>연결 중...</span>
                             </div>
                         )}
                         {connectionState === 'reconnecting' && (
                             <div className="flex items-center gap-1.5 bg-orange-500/10 text-orange-600 dark:text-orange-400 px-2.5 py-1 rounded-full text-xs font-medium">
-                                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                                <span>재연결 중 ({reconnectAttempts})</span>
+                                <RefreshCw className="w-3.5 h-3.5 animate-spin" /><span>재연결 중 ({reconnectAttempts})</span>
                             </div>
                         )}
                         {connectionState === 'disconnected' && !isLoading && (
-                            <button
-                                onClick={reconnectSocket}
-                                className="flex items-center gap-1.5 bg-red-500/10 text-red-600 dark:text-red-400 px-2.5 py-1 rounded-full text-xs font-medium hover:bg-red-500/20 transition-colors"
-                                title={socketError || '연결 끊김'}
-                            >
-                                <WifiOff className="w-3.5 h-3.5" />
-                                <span>오프라인</span>
+                            <button onClick={reconnectSocket} title={socketError || '연결 끊김'}
+                                    className="flex items-center gap-1.5 bg-red-500/10 text-red-600 dark:text-red-400 px-2.5 py-1 rounded-full text-xs font-medium hover:bg-red-500/20">
+                                <WifiOff className="w-3.5 h-3.5" /><span>오프라인</span>
                             </button>
                         )}
-
-                        {/* 저장 중 인디케이터 */}
                         {isSaving && (
                             <div className="flex items-center gap-2 bg-blue-500 text-white px-3 py-1.5 rounded-full text-sm shadow-lg">
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                                <span>저장 중...</span>
+                                <Loader2 className="w-4 h-4 animate-spin" /><span>저장 중...</span>
                             </div>
                         )}
                     </div>
 
                     {viewMode === 'board' && (
                         <BoardCanvas
-                            tasks={filteredTasks}
-                            connections={filteredConnections}
-                            columns={columns}
-                            onTasksUpdate={handleBoardTasksUpdate}
-                            onTaskSelect={handleTaskSelect}
-                            onTaskCreate={handleTaskCreate}
-                            onTaskUpdate={handleTaskUpdate}
-                            onTaskDelete={handleTaskDelete}
-                            onMoveTaskToColumn={handleMoveTaskToColumn}
-                            onConnectionCreate={handleConnectionCreate}
-                            onConnectionDelete={handleConnectionDelete}
+                            tasks={filteredTasks} connections={filteredConnections} columns={columns}
+                            onTasksUpdate={handleBoardTasksUpdate} onTaskSelect={handleTaskSelect}
+                            onTaskCreate={handleTaskCreate} onTaskUpdate={handleTaskUpdate}
+                            onTaskDelete={handleTaskDelete} onMoveTaskToColumn={handleMoveTaskToColumn}
+                            onConnectionCreate={handleConnectionCreate} onConnectionDelete={handleConnectionDelete}
                             onConnectionUpdate={handleConnectionUpdate}
-                            boards={boards}
-                            activeBoardId={activeBoardId}
-                            onSwitchBoard={handleSwitchBoard}
-                            onAddBoard={handleAddBoard}
-                            onRenameBoard={handleRenameBoard}
-                            snapToGrid={snapToGrid}
-                            groups={filteredGroups}
-                            onGroupsUpdate={handleGroupsUpdate}
-                            onGroupMove={handleGroupMove}
-                            onGroupDelete={handleGroupDelete}
-                            onToggleGrid={handleToggleGrid}
-                            onToggleTheme={handleToggleTheme}
-                            onFileDropOnCard={handleFileDropOnCard}
-                            onNativeFileDrop={handleNativeFileDrop}
+                            boards={boards} activeBoardId={activeBoardId}
+                            onSwitchBoard={handleSwitchBoard} onAddBoard={handleAddBoard} onRenameBoard={handleRenameBoard}
+                            snapToGrid={snapToGrid} groups={filteredGroups}
+                            onGroupsUpdate={handleGroupsUpdate} onGroupMove={handleGroupMove} onGroupDelete={handleGroupDelete}
+                            onToggleGrid={handleToggleGrid} onToggleTheme={handleToggleTheme}
+                            onFileDropOnCard={handleFileDropOnCard} onNativeFileDrop={handleNativeFileDrop}
                             onBackgroundFileDrop={handleBackgroundFileDrop}
                         />
                     )}
@@ -1130,50 +736,34 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
                 </div>
             </div>
 
-            {/* Dock 컴포넌트 */}
+            {/* Dock */}
             <Dock
                 activeMenu={activeDockMenu}
                 onMenuChange={(menu) => {
-                    if (menu === 'files') {
-                        setShowFilePanel(prev => !prev);
-                    } else {
-                        setShowFilePanel(false);
-                    }
+                    setShowFilePanel(menu === 'files' ? !showFilePanel : false);
                     setActiveDockMenu(menu);
                 }}
-                editingCards={[]}
-                members={members}
-                showMembers={showMembers}
-                setShowMembers={setShowMembers}
-                projectId={project.id}
-                currentUserId={user?.id ?? 0}
+                editingCards={[]} members={members} showMembers={showMembers}
+                setShowMembers={setShowMembers} projectId={project.id} currentUserId={user?.id ?? 0}
             />
 
-            {/* 파일 목록 패널 */}
+            {/* File Panel */}
             <FileListPanel
-                key={filePanelRefreshKey}
-                projectId={project.id}
-                isOpen={showFilePanel}
-                onClose={() => {
-                    setShowFilePanel(false);
-                    setActiveDockMenu('dashboard');
-                }}
-                onFileDragStart={(file) => setDraggingFile(file)}
-                onFileDeleted={handleFileDeleted}
+                key={filePanelRefreshKey} projectId={project.id} isOpen={showFilePanel}
+                onClose={() => { setShowFilePanel(false); setActiveDockMenu('dashboard'); }}
+                onFileDragStart={() => {}} onFileDeleted={handleFileDeleted}
             />
 
-            {/* Task Detail Modal */}
+            {/* Task Modal */}
             {selectedTask && (
                 <TaskDetailModal
-                    task={selectedTask}
-                    onClose={() => setSelectedTask(null)}
+                    task={selectedTask} onClose={() => setSelectedTask(null)}
                     onUpdate={handleTaskModalUpdate}
-                    currentUser={user?.name ?? "User"}
-                    currentUserId={user?.id ?? 0}
+                    currentUser={user?.name ?? "User"} currentUserId={user?.id ?? 0}
                 />
             )}
         </div>
     );
-}
+};
 
 export default BoardScreen;
