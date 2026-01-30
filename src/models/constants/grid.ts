@@ -13,6 +13,10 @@
  * 좌표 시스템:
  * - 그룹에 속한 카드: 상대 좌표 (그룹 좌상단 기준)
  * - 자유 배치 카드: 절대 좌표 (캔버스 기준)
+ *
+ * 좌표 정수화:
+ * - 모든 좌표 계산 결과는 Math.round()로 정수화
+ * - 부동소수점 오차 누적 방지
  */
 
 // ============================================
@@ -101,15 +105,25 @@ export const DEFAULT_GRID_CONFIG: GridConfig = {
 // ============================================
 
 /**
+ * 좌표 정수화 헬퍼 함수
+ * - 부동소수점 오차 방지
+ * - 저장/로드 반복 시 좌표 드리프트 방지
+ */
+function roundCoord(value: number): number {
+    return Math.round(value);
+}
+
+/**
  * 그리드 인덱스를 상대 좌표로 변환 (그룹 기준)
  *
  * @description
  * 그룹 내 카드의 상대 좌표를 계산합니다.
  * 반환값은 그룹 좌상단(0,0) 기준의 offset입니다.
+ * 모든 결과는 정수로 반환됩니다.
  *
  * @param index - 그리드 내 인덱스 (0부터 시작)
  * @param config - 그리드 설정 (선택, 기본값 사용 가능)
- * @returns 상대 좌표 { x, y } (그룹 내 offset)
+ * @returns 상대 좌표 { x, y } (정수, 그룹 내 offset)
  */
 export function indexToRelativePosition(
     index: number,
@@ -119,8 +133,8 @@ export function indexToRelativePosition(
     const row = Math.floor(index / config.columns);
 
     return {
-        x: config.padding + col * (config.cardWidth + config.gap),
-        y: config.headerHeight + config.padding + row * (config.cardHeight + config.gap),
+        x: roundCoord(config.padding + col * (config.cardWidth + config.gap)),
+        y: roundCoord(config.headerHeight + config.padding + row * (config.cardHeight + config.gap)),
     };
 }
 
@@ -129,12 +143,13 @@ export function indexToRelativePosition(
  *
  * @description
  * 렌더링 시점에서 사용합니다. 그룹 좌표 + 상대 좌표 = 절대 좌표
+ * 모든 결과는 정수로 반환됩니다.
  *
  * @param index - 그리드 내 인덱스 (0부터 시작)
  * @param groupX - 그룹의 X 좌표
  * @param groupY - 그룹의 Y 좌표
  * @param config - 그리드 설정 (선택, 기본값 사용 가능)
- * @returns 절대 좌표 { x, y }
+ * @returns 절대 좌표 { x, y } (정수)
  */
 export function indexToAbsolutePosition(
     index: number,
@@ -144,8 +159,8 @@ export function indexToAbsolutePosition(
 ): { x: number; y: number } {
     const relative = indexToRelativePosition(index, config);
     return {
-        x: groupX + relative.x,
-        y: groupY + relative.y,
+        x: roundCoord(groupX + relative.x),
+        y: roundCoord(groupY + relative.y),
     };
 }
 
@@ -156,7 +171,7 @@ export function indexToAbsolutePosition(
  * @param relativeY - 그룹 내 상대 Y 좌표
  * @param groupX - 그룹의 X 좌표
  * @param groupY - 그룹의 Y 좌표
- * @returns 절대 좌표 { x, y }
+ * @returns 절대 좌표 { x, y } (정수)
  */
 export function relativeToAbsolute(
     relativeX: number,
@@ -165,8 +180,8 @@ export function relativeToAbsolute(
     groupY: number
 ): { x: number; y: number } {
     return {
-        x: groupX + relativeX,
-        y: groupY + relativeY,
+        x: roundCoord(groupX + relativeX),
+        y: roundCoord(groupY + relativeY),
     };
 }
 
@@ -177,7 +192,7 @@ export function relativeToAbsolute(
  * @param absoluteY - 캔버스 절대 Y 좌표
  * @param groupX - 그룹의 X 좌표
  * @param groupY - 그룹의 Y 좌표
- * @returns 상대 좌표 { x, y }
+ * @returns 상대 좌표 { x, y } (정수)
  */
 export function absoluteToRelative(
     absoluteX: number,
@@ -186,8 +201,8 @@ export function absoluteToRelative(
     groupY: number
 ): { x: number; y: number } {
     return {
-        x: absoluteX - groupX,
-        y: absoluteY - groupY,
+        x: roundCoord(absoluteX - groupX),
+        y: roundCoord(absoluteY - groupY),
     };
 }
 
@@ -289,13 +304,14 @@ export function isCardCenterInGroup(
  * @description
  * 기존에 절대 좌표로 저장된 카드 데이터를 상대 좌표로 변환합니다.
  * 카드가 그룹에 속해있지 않으면 원본 좌표를 그대로 반환합니다.
+ * 결과는 정수로 반환됩니다.
  *
  * @param cardX - 카드의 기존 X 좌표
  * @param cardY - 카드의 기존 Y 좌표
  * @param groupX - 그룹의 X 좌표 (그룹에 속한 경우)
  * @param groupY - 그룹의 Y 좌표 (그룹에 속한 경우)
  * @param belongsToGroup - 그룹에 속해있는지 여부
- * @returns 변환된 좌표 { x, y }
+ * @returns 변환된 좌표 { x, y } (정수)
  */
 export function migrateToRelativeCoordinate(
     cardX: number,
@@ -305,8 +321,8 @@ export function migrateToRelativeCoordinate(
     belongsToGroup: boolean
 ): { x: number; y: number } {
     if (!belongsToGroup) {
-        // 자유 배치 카드는 절대 좌표 유지
-        return { x: cardX, y: cardY };
+        // 자유 배치 카드는 절대 좌표 유지 (정수화)
+        return { x: roundCoord(cardX), y: roundCoord(cardY) };
     }
     // 그룹 카드는 상대 좌표로 변환
     return absoluteToRelative(cardX, cardY, groupX, groupY);
@@ -317,7 +333,10 @@ export function migrateToRelativeCoordinate(
  *
  * @description
  * 절대 좌표로 저장된 기존 데이터와 새로운 상대 좌표 데이터를 구분합니다.
- * 그룹 헤더 높이보다 작은 Y 좌표는 이미 상대 좌표로 간주합니다.
+ *
+ * 판단 기준:
+ * 1. 카드 좌표가 그룹 좌표보다 크거나 같으면 → 절대 좌표 (레거시)
+ * 2. 상대 좌표의 합리적인 범위 내에 있으면 → 상대 좌표
  *
  * @param cardX - 카드의 X 좌표
  * @param cardY - 카드의 Y 좌표
@@ -333,14 +352,36 @@ export function isAlreadyRelativeCoordinate(
     groupY: number,
     config: GridConfig = DEFAULT_GRID_CONFIG
 ): boolean {
-    // 그룹 원점보다 작은 좌표면 이미 상대 좌표
-    // (상대 좌표는 항상 양수이고 그룹 영역 내에 있어야 함)
-    const isRelativeX = cardX >= 0 && cardX < groupX;
-    const isRelativeY = cardY >= 0 && cardY < groupY;
+    // 카드 좌표가 그룹 좌표보다 크거나 같으면 절대 좌표 (레거시)
+    if (cardX >= groupX && cardY >= groupY) {
+        return false;
+    }
 
-    // 카드 좌표가 그룹 시작점 + 패딩 범위 내에 있으면 상대 좌표로 간주
-    const maxRelativeX = config.padding + config.columns * (config.cardWidth + config.gap);
-    const isLikelyRelative = cardX < maxRelativeX && cardY < 1000; // 합리적인 상대 좌표 범위
+    // 상대 좌표의 합리적인 범위
+    const maxRelativeX = config.padding * 2 + config.columns * (config.cardWidth + config.gap);
+    const minRelativeY = config.headerHeight + config.padding;
 
-    return isLikelyRelative || (isRelativeX && isRelativeY);
+    // 범위 내에 있으면 상대 좌표
+    const isLikelyRelativeX = cardX >= 0 && cardX <= maxRelativeX;
+    const isLikelyRelativeY = cardY >= minRelativeY;
+
+    return isLikelyRelativeX && isLikelyRelativeY;
+}
+
+/**
+ * 좌표 정수화 유틸리티 (외부 노출)
+ *
+ * @description
+ * API 호출 전 좌표를 정수화할 때 사용합니다.
+ * 부동소수점 오차로 인한 좌표 드리프트를 방지합니다.
+ *
+ * @param x - X 좌표
+ * @param y - Y 좌표
+ * @returns 정수화된 좌표 { x, y }
+ */
+export function normalizeCoordinates(x: number, y: number): { x: number; y: number } {
+    return {
+        x: roundCoord(x),
+        y: roundCoord(y),
+    };
 }
