@@ -2,7 +2,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Project, Task, Connection, Board, Group, ViewMode, Column, FileMetadata, Member } from '@/src/models/types';
+import { Project, Task, Connection, Board, Group, ViewMode, Column, FileMetadata, Member, SocketConnectionState } from '@/src/models/types';
 import { BoardCanvas } from '@/src/views/board';
 import { CalendarView } from '@/src/views/calendar';
 import { TimelineView } from '@/src/views/timeline';
@@ -12,6 +12,7 @@ import { Mascot } from '@/src/views/common';
 import { Dock, FileListPanel } from '@/src/views/dock';
 import { CommunityBoard } from '@/src/views/community';
 import { useUser } from '@/src/lib/contexts/UserContext';
+import { useBoardSocket } from '@/src/containers/hooks/board';
 import {
     CARD_WIDTH,
     CARD_HEIGHT,
@@ -43,7 +44,8 @@ import { subscribeOnlineMembers } from '@/src/models/api/workspace';
 
 import {
     LayoutGrid, Calendar as CalendarIcon, StretchHorizontal, Settings,
-    ChevronLeft, ChevronRight, ArrowLeft, Loader2, AlertCircle, MessageSquare
+    ChevronLeft, ChevronRight, ArrowLeft, Loader2, AlertCircle, MessageSquare,
+    Wifi, WifiOff, RefreshCw
 } from 'lucide-react';
 
 interface BoardScreenProps {
@@ -54,7 +56,7 @@ interface BoardScreenProps {
 export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => {
     // 현재 로그인한 사용자 정보
     const { user } = useUser();
-    
+
     // 데이터 상태
     const [tasks, setTasks] = useState<Task[]>([]);
     const [connections, setConnections] = useState<Connection[]>([]);
@@ -92,6 +94,201 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
     const [error, setError] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
     const [uploadingCardId, setUploadingCardId] = useState<number | null>(null);
+
+    // =========================================
+    // WebSocket 실시간 동기화
+    // =========================================
+
+    // WebSocket 이벤트 핸들러 - Optimistic Update 중복 방지
+    // 본인이 방금 수행한 작업의 이벤트는 무시 (이미 로컬 상태 업데이트됨)
+    const pendingOperationsRef = useRef<Set<string>>(new Set());
+
+    const addPendingOperation = useCallback((type: string, id: number) => {
+        const key = `${type}:${id}`;
+        pendingOperationsRef.current.add(key);
+        // 5초 후 자동 제거 (타임아웃 방지)
+        setTimeout(() => pendingOperationsRef.current.delete(key), 5000);
+    }, []);
+
+    const isPendingOperation = useCallback((type: string, id: number) => {
+        return pendingOperationsRef.current.has(`${type}:${id}`);
+    }, []);
+
+    const removePendingOperation = useCallback((type: string, id: number) => {
+        pendingOperationsRef.current.delete(`${type}:${id}`);
+    }, []);
+
+    // WebSocket 이벤트 콜백
+    const handleSocketTaskCreated = useCallback((task: Task) => {
+        // Optimistic Update로 이미 추가된 경우 무시
+        if (isPendingOperation('CARD_CREATED', task.id)) {
+            removePendingOperation('CARD_CREATED', task.id);
+            return;
+        }
+        setTasks(prev => {
+            // 중복 방지
+            if (prev.some(t => t.id === task.id)) return prev;
+            return [...prev, task];
+        });
+    }, [isPendingOperation, removePendingOperation]);
+
+    const handleSocketTaskUpdated = useCallback((task: Task) => {
+        if (isPendingOperation('CARD_UPDATED', task.id)) {
+            removePendingOperation('CARD_UPDATED', task.id);
+            return;
+        }
+        setTasks(prev => prev.map(t => t.id === task.id ? { ...t, ...task } : t));
+        // selectedTask도 업데이트
+        setSelectedTask(prev => prev?.id === task.id ? { ...prev, ...task } : prev);
+    }, [isPendingOperation, removePendingOperation]);
+
+    const handleSocketTaskDeleted = useCallback((taskId: number) => {
+        if (isPendingOperation('CARD_DELETED', taskId)) {
+            removePendingOperation('CARD_DELETED', taskId);
+            return;
+        }
+        setTasks(prev => prev.filter(t => t.id !== taskId));
+        setSelectedTask(prev => prev?.id === taskId ? null : prev);
+    }, [isPendingOperation, removePendingOperation]);
+
+    const handleSocketTasksBatchUpdated = useCallback((updatedTasks: Task[]) => {
+        setTasks(prev => {
+            const updatedMap = new Map(updatedTasks.map(t => [t.id, t]));
+            return prev.map(t => updatedMap.has(t.id) ? { ...t, ...updatedMap.get(t.id)! } : t);
+        });
+    }, []);
+
+    const handleSocketColumnCreated = useCallback((column: Column) => {
+        setColumns(prev => {
+            if (prev.some(c => c.id === column.id)) return prev;
+            return [...prev, column];
+        });
+        // Group도 추가
+        setGroups(prev => {
+            if (prev.some(g => g.id === column.id)) return prev;
+            const newGroup: Group = {
+                id: column.id,
+                title: column.title,
+                x: column.localX ?? GRID_PADDING,
+                y: column.localY ?? (GRID_PADDING + GROUP_HEADER_HEIGHT),
+                width: column.width ?? GROUP_DEFAULT_WIDTH,
+                height: column.height ?? GROUP_DEFAULT_HEIGHT,
+                projectId: column.project_id,
+                parentId: column.parentId ?? null,
+                depth: column.depth ?? 0,
+                color: column.color,
+                collapsed: column.collapsed,
+            };
+            return [...prev, newGroup];
+        });
+    }, []);
+
+    const handleSocketColumnUpdated = useCallback((column: Column) => {
+        setColumns(prev => prev.map(c => c.id === column.id ? { ...c, ...column } : c));
+        // Group도 업데이트
+        setGroups(prev => prev.map(g => {
+            if (g.id !== column.id) return g;
+            return {
+                ...g,
+                title: column.title,
+                x: column.localX ?? g.x,
+                y: column.localY ?? g.y,
+                width: column.width ?? g.width,
+                height: column.height ?? g.height,
+                parentId: column.parentId ?? null,
+                depth: column.depth ?? 0,
+                color: column.color,
+                collapsed: column.collapsed,
+            };
+        }));
+    }, []);
+
+    const handleSocketColumnDeleted = useCallback((columnId: number) => {
+        setColumns(prev => prev.filter(c => c.id !== columnId));
+        setGroups(prev => prev.filter(g => g.id !== columnId));
+        // 해당 컬럼의 카드들은 column_id를 제거
+        setTasks(prev => prev.map(t =>
+            t.column_id === columnId ? { ...t, column_id: undefined } : t
+        ));
+    }, []);
+
+    const handleSocketConnectionCreated = useCallback((connection: Connection) => {
+        if (isPendingOperation('CONNECTION_CREATED', connection.id)) {
+            removePendingOperation('CONNECTION_CREATED', connection.id);
+            return;
+        }
+        setConnections(prev => {
+            if (prev.some(c => c.id === connection.id)) return prev;
+            return [...prev, connection];
+        });
+    }, [isPendingOperation, removePendingOperation]);
+
+    const handleSocketConnectionUpdated = useCallback((connection: Connection) => {
+        setConnections(prev => prev.map(c =>
+            c.id === connection.id ? { ...c, ...connection } : c
+        ));
+    }, []);
+
+    const handleSocketConnectionDeleted = useCallback((connectionId: number) => {
+        if (isPendingOperation('CONNECTION_DELETED', connectionId)) {
+            removePendingOperation('CONNECTION_DELETED', connectionId);
+            return;
+        }
+        setConnections(prev => prev.filter(c => c.id !== connectionId));
+    }, [isPendingOperation, removePendingOperation]);
+
+    const handleSocketFileUploaded = useCallback(() => {
+        // 파일 패널 새로고침
+        setFilePanelRefreshKey(prev => prev + 1);
+    }, []);
+
+    const handleSocketFileDeleted = useCallback((fileId: number) => {
+        // 모든 카드에서 해당 파일 제거
+        setTasks(prev => prev.map(task => ({
+            ...task,
+            files: task.files?.filter(f => f.id !== fileId) || []
+        })));
+        setFilePanelRefreshKey(prev => prev + 1);
+    }, []);
+
+    // WebSocket 훅 연결
+    const {
+        connectionState,
+        isConnected: isSocketConnected,
+        lastError: socketError,
+        reconnectAttempts,
+        reconnect: reconnectSocket,
+    } = useBoardSocket({
+        projectId: project.id,
+        currentUserId: user?.id,
+        enabled: !isLoading, // 초기 로딩 완료 후 연결
+
+        onTaskCreated: handleSocketTaskCreated,
+        onTaskUpdated: handleSocketTaskUpdated,
+        onTaskDeleted: handleSocketTaskDeleted,
+        onTasksBatchUpdated: handleSocketTasksBatchUpdated,
+
+        onColumnCreated: handleSocketColumnCreated,
+        onColumnUpdated: handleSocketColumnUpdated,
+        onColumnDeleted: handleSocketColumnDeleted,
+
+        onConnectionCreated: handleSocketConnectionCreated,
+        onConnectionUpdated: handleSocketConnectionUpdated,
+        onConnectionDeleted: handleSocketConnectionDeleted,
+
+        onFileUploaded: handleSocketFileUploaded,
+        onFileDeleted: handleSocketFileDeleted,
+
+        onConnected: () => {
+            console.log('[BoardScreen] WebSocket connected');
+        },
+        onDisconnected: () => {
+            console.log('[BoardScreen] WebSocket disconnected');
+        },
+        onError: (error) => {
+            console.error('[BoardScreen] WebSocket error:', error);
+        },
+    });
 
     // =========================================
     // 멤버 및 온라인 상태 로딩 (SSE 구독 방식)
@@ -854,13 +1051,46 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
             <div className="flex-1 flex flex-col h-full relative overflow-hidden z-10 p-4">
                 <div className="bg-white/40 dark:bg-black/40 backdrop-blur-3xl rounded-[2rem] border border-white/20 dark:border-white/5 shadow-inner h-full overflow-hidden relative">
 
-                    {/* 저장 중 인디케이터 */}
-                    {isSaving && (
-                        <div className="absolute top-4 right-4 z-50 flex items-center gap-2 bg-blue-500 text-white px-3 py-1.5 rounded-full text-sm shadow-lg">
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            <span>저장 중...</span>
-                        </div>
-                    )}
+                    {/* 상태 인디케이터 영역 */}
+                    <div className="absolute top-4 right-4 z-50 flex items-center gap-2">
+                        {/* WebSocket 연결 상태 */}
+                        {connectionState === 'connected' && (
+                            <div className="flex items-center gap-1.5 bg-green-500/10 text-green-600 dark:text-green-400 px-2.5 py-1 rounded-full text-xs font-medium">
+                                <Wifi className="w-3.5 h-3.5" />
+                                <span>실시간</span>
+                            </div>
+                        )}
+                        {connectionState === 'connecting' && (
+                            <div className="flex items-center gap-1.5 bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 px-2.5 py-1 rounded-full text-xs font-medium">
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                <span>연결 중...</span>
+                            </div>
+                        )}
+                        {connectionState === 'reconnecting' && (
+                            <div className="flex items-center gap-1.5 bg-orange-500/10 text-orange-600 dark:text-orange-400 px-2.5 py-1 rounded-full text-xs font-medium">
+                                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                <span>재연결 중 ({reconnectAttempts})</span>
+                            </div>
+                        )}
+                        {connectionState === 'disconnected' && !isLoading && (
+                            <button
+                                onClick={reconnectSocket}
+                                className="flex items-center gap-1.5 bg-red-500/10 text-red-600 dark:text-red-400 px-2.5 py-1 rounded-full text-xs font-medium hover:bg-red-500/20 transition-colors"
+                                title={socketError || '연결 끊김'}
+                            >
+                                <WifiOff className="w-3.5 h-3.5" />
+                                <span>오프라인</span>
+                            </button>
+                        )}
+
+                        {/* 저장 중 인디케이터 */}
+                        {isSaving && (
+                            <div className="flex items-center gap-2 bg-blue-500 text-white px-3 py-1.5 rounded-full text-sm shadow-lg">
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                <span>저장 중...</span>
+                            </div>
+                        )}
+                    </div>
 
                     {viewMode === 'board' && (
                         <BoardCanvas
