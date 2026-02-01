@@ -233,34 +233,29 @@ export function useVoiceChat(projectId: number, userId: number): UseVoiceChatRet
     }, [userId, createPeerConnection]);
 
     /**
-     * 신규 입장자가 existing_users 목록을 받아 각 기존 참여자에게 offer를 보내는 로직.
+     * 신규 입장자가 existing_users 목록을 수신했을 때의 처리.
+     *
+     * Offer Collision 방지:
+     *   - 신규 입장자는 Offer를 보내지 않는다.
+     *   - 기존 참여자가 user_joined를 수신하여 Offer를 생성하므로,
+     *     여기서는 activePeerIds에만 등록하고 Offer 수신을 대기한다.
      */
-    const handleExistingUsers = useCallback(async (userIds: number[], stream: MediaStream) => {
-        log('Signal', `Received existing users list: [${userIds.join(', ')}]`);
+    const handleExistingUsers = useCallback(async (userIds: number[], _stream: MediaStream) => {
+        log('Signal', `Received existing users list: [${userIds.join(', ')}] (waiting for their offers)`);
 
         for (const peerId of userIds) {
             if (peerId === userId) continue;
 
-            log('Signal', `Creating offer for existing peer ${peerId}`);
-            const pc = createPeerConnection(peerId, stream);
-
-            try {
-                const offer = await pc.createOffer();
-                await pc.setLocalDescription(offer);
-
-                log('Signal', `Sending OFFER to existing peer ${peerId}`);
-                socketRef.current?.send(JSON.stringify({
-                    type: 'offer',
-                    senderId: userId,
-                    targetId: peerId,
-                    to: peerId,
-                    sdp: pc.localDescription,
-                }));
-            } catch (e) {
-                console.error(`Failed to create offer for peer ${peerId}:`, e);
-            }
+            // activePeerIds에 등록만 해두고 Offer는 보내지 않는다.
+            // 기존 참여자가 user_joined를 받아 Offer를 보내면
+            // handleOffer에서 PeerConnection 생성 및 Answer 전송이 처리된다.
+            setActivePeerIds(prev => {
+                if (prev.includes(peerId)) return prev;
+                log('State', `Registering existing peer ${peerId} (awaiting offer)`);
+                return [...prev, peerId];
+            });
         }
-    }, [userId, createPeerConnection]);
+    }, [userId]);
 
     const handleOffer = useCallback(async (senderId: number, sdp: RTCSessionDescriptionInit, stream: MediaStream) => {
         log('Signal', `Received OFFER from peer ${senderId}`);
