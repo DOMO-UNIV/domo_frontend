@@ -11,6 +11,7 @@ import { TaskDetailModal } from '@/src/views/task';
 import { Mascot } from '@/src/views/common';
 import { Dock, FileListPanel } from '@/src/views/dock';
 import { CommunityBoard } from '@/src/views/community';
+import { ChatView } from '@/src/views/chat';
 import { useUser } from '@/src/lib/contexts/UserContext';
 import { useBoardSocket } from '@/src/containers/hooks/board';
 import {
@@ -42,7 +43,7 @@ import { subscribeOnlineMembers } from '@/src/models/api/workspace';
 
 import {
     LayoutGrid, Calendar as CalendarIcon, StretchHorizontal, Settings,
-    ChevronLeft, ChevronRight, ArrowLeft, Loader2, AlertCircle, MessageSquare,
+    ChevronLeft, ChevronRight, ArrowLeft, Loader2, AlertCircle, MessageSquare, MessageCircle,
     Wifi, WifiOff, RefreshCw
 } from 'lucide-react';
 
@@ -659,6 +660,7 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
                             { mode: 'board', icon: LayoutGrid, label: 'Board' },
                             { mode: 'calendar', icon: CalendarIcon, label: 'Calendar' },
                             { mode: 'timeline', icon: StretchHorizontal, label: 'Timeline' },
+                            { mode: 'chat', icon: MessageCircle, label: 'Chat' },
                             { mode: 'community', icon: MessageSquare, label: 'Community' },
                         ] as const).map(({ mode, icon: Icon, label }) => (
                             <button key={mode} onClick={() => setViewMode(mode)}
@@ -731,6 +733,7 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
                     )}
                     {viewMode === 'calendar' && <CalendarView tasks={tasks} onTaskSelect={handleTaskSelect} />}
                     {viewMode === 'timeline' && <TimelineView tasks={tasks} onTaskSelect={handleTaskSelect} />}
+                    {viewMode === 'chat' && <ChatView projectId={project.id} currentUserId={user?.id ?? 0} currentUserName={user?.name ?? 'User'} projectName={project.name} />}
                     {viewMode === 'community' && <CommunityBoard projectId={project.id} viewType="table" />}
                     {viewMode === 'settings' && <SettingsView />}
                 </div>
@@ -745,6 +748,10 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
                 }}
                 editingCards={[]} members={members} showMembers={showMembers}
                 setShowMembers={setShowMembers} projectId={project.id} currentUserId={user?.id ?? 0}
+                currentUserName={user?.name ?? 'User'}
+                onExpandChatToFullView={() => setViewMode('chat')}
+                isChatViewActive={viewMode === 'chat'}
+                projectName={project.name}
             />
 
             {/* File Panel */}
