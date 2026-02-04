@@ -77,6 +77,7 @@ export function useChatSocket({
         setConnectionState(reconnectAttemptsRef.current > 0 ? 'reconnecting' : 'connecting');
 
         const url = getWebSocketUrl(`/api/ws/projects/${projectId}/chat`);
+        console.log('[ChatSocket] Connecting to:', url);
         const ws = new WebSocket(url);
         wsRef.current = ws;
 
@@ -147,8 +148,17 @@ export function useChatSocket({
 
     // 연결/해제 lifecycle
     useEffect(() => {
+        console.log('[ChatSocket] Effect triggered:', { enabled, projectId, currentUserId });
         if (enabled && projectId && currentUserId) {
+            console.log('[ChatSocket] All conditions met, calling connect()');
             connect();
+        } else {
+            console.log('[ChatSocket] Condition not met:', {
+                enabled: !!enabled,
+                projectId: !!projectId,
+                currentUserId: !!currentUserId,
+                currentUserIdValue: currentUserId,
+            });
         }
         return () => {
             isManualDisconnectRef.current = true;
