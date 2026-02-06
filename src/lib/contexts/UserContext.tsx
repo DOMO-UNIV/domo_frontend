@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { User, AuthUser } from '@/src/models/types';
+import { User } from '@/src/models/types';
 import { getMyInfo } from '@/src/models/api';
 
 interface UserContextType {
@@ -9,6 +9,7 @@ interface UserContextType {
     loading: boolean;
     refreshUser: () => Promise<void>;
     updateUser: (userData: User) => void;
+    clearUser: () => void;
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
@@ -19,10 +20,12 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
 
     const refreshUser = useCallback(async () => {
         try {
+            setLoading(true);
             const userData = await getMyInfo();
             setUser(userData);
         } catch (error) {
             console.error('Failed to fetch user info:', error);
+            setUser(null);
         } finally {
             setLoading(false);
         }
@@ -32,12 +35,16 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         setUser(userData);
     }, []);
 
+    const clearUser = useCallback(() => {
+        setUser(null);
+    }, []);
+
     useEffect(() => {
         refreshUser();
     }, [refreshUser]);
 
     return (
-        <UserContext.Provider value={{ user, loading, refreshUser, updateUser }}>
+        <UserContext.Provider value={{ user, loading, refreshUser, updateUser, clearUser }}>
             {children}
         </UserContext.Provider>
     );
