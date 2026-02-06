@@ -3,11 +3,10 @@
 import React, { useState } from 'react';
 import { Mascot } from '@/src/views/common';
 import { login } from '@/src/models/api';
-import type { AuthUser } from '@/src/models/types';
 import { ArrowRight, Loader2, Mail, Lock } from 'lucide-react';
 
 interface LoginScreenProps {
-  onLoginSuccess: (user: AuthUser) => void;
+  onLoginSuccess: () => void;
   onGoToSignup: () => void;
 }
 
@@ -23,8 +22,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, onGoTo
     setError(null);
 
     try {
-      const response = await login(email, password);
-      onLoginSuccess(response.user);
+      await login(email, password);
+      onLoginSuccess();
     } catch (err) {
       setError(err instanceof Error ? err.message : '로그인 중 오류가 발생했습니다.');
     } finally {
