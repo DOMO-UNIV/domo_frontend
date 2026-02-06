@@ -13,6 +13,7 @@ export default function BoardPage() {
 
     const [project, setProject] = useState<Project | null>(null);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
 
     const workspaceId = String(params.workspaceId);
     const projectId = Number(params.projectId);
@@ -23,9 +24,14 @@ export default function BoardPage() {
             return;
         }
 
+        setLoading(true);
+        setError(null);
         getProject(projectId)
             .then(setProject)
-            .catch(() => router.replace(`/workspaces/${workspaceId}`))
+            .catch((err) => {
+                console.error('Failed to fetch project:', err);
+                setError(err instanceof Error ? err.message : '프로젝트를 불러오지 못했습니다.');
+            })
             .finally(() => setLoading(false));
     }, [projectId, workspaceId, router]);
 
@@ -33,6 +39,20 @@ export default function BoardPage() {
         return (
             <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-black">
                 <Loader2 className="w-10 h-10 animate-spin text-blue-500" />
+            </div>
+        );
+    }
+
+    if (error) {
+        return (
+            <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-black gap-4">
+                <p className="text-red-500">{error}</p>
+                <button
+                    onClick={() => router.replace(`/workspaces/${workspaceId}`)}
+                    className="px-4 py-2 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-colors"
+                >
+                    워크스페이스로 돌아가기
+                </button>
             </div>
         );
     }
