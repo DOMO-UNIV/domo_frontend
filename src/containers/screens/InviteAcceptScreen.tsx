@@ -95,7 +95,7 @@ export const InviteAcceptScreen: React.FC<InviteAcceptScreenProps> = ({ token })
 
     // 워크스페이스로 이동
     const handleGoToWorkspace = () => {
-        router.push('/');
+        router.push('/workspaces');
     };
 
     // 역할 표시 텍스트
