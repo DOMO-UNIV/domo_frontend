@@ -323,11 +323,11 @@ export async function createProject(
     body: JSON.stringify({ name, description }),
   });
 
-  // 워크스페이스 이름 조회
+  // 워크스페이스 이름 조회 (단일 조회 미지원으로 목록에서 필터링)
   let workspaceName = '워크스페이스';
   try {
-    const ws = await apiFetch<{ name: string }>(`/workspaces/${workspaceId}`);
-    workspaceName = ws.name;
+    const list = await apiFetch<{ id: number; name: string }[]>('/workspaces');
+    workspaceName = list.find(ws => ws.id === workspaceId)?.name ?? workspaceName;
   } catch {}
 
   return mapProjectResponse(response, workspaceName, 1);
