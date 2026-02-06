@@ -73,16 +73,21 @@ export async function getWorkspace(workspaceId: number): Promise<Workspace> {
     return workspace;
   }
 
-  // 워크스페이스 기본 정보 + 프로젝트 목록 조합
-  const [wsResponse, projects] = await Promise.all([
+  // 백엔드가 GET /workspaces/{id}를 지원하지 않으므로 목록에서 필터링
+  const [allWorkspaces, projects] = await Promise.all([
     apiFetch<{
       id: number;
       name: string;
       owner_id: number;
       description?: string;
-    }>(`/workspaces/${workspaceId}`),
+    }[]>('/workspaces'),
     getProjects(workspaceId).catch(() => [] as Project[]),
   ]);
+
+  const wsResponse = allWorkspaces.find(ws => ws.id === workspaceId);
+  if (!wsResponse) {
+    throw new Error('워크스페이스를 찾을 수 없습니다.');
+  }
 
   return {
     id: wsResponse.id,
@@ -249,7 +254,9 @@ export async function getProjects(workspaceId: number): Promise<Project[]> {
       workspace_id: number;
       description?: string;
     }[]>(`/workspaces/${workspaceId}/projects`),
-    apiFetch<{ name: string }>(`/workspaces/${workspaceId}`).catch(() => ({ name: '워크스페이스' })),
+    apiFetch<{ id: number; name: string }[]>('/workspaces')
+        .then(list => list.find(ws => ws.id === workspaceId) ?? { name: '워크스페이스' })
+        .catch(() => ({ name: '워크스페이스' })),
     apiFetch<BackendMemberResponse[]>(`/workspaces/${workspaceId}/members`).catch(() => []),
   ]);
 
