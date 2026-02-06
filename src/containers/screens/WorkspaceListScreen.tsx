@@ -5,9 +5,8 @@ import {
     getWorkspaces,
     createWorkspace,
     deleteWorkspace,
-    logout,
 } from '@/src/models/api';
-import type { Workspace, AuthUser } from '@/src/models/types';
+import type { Workspace, User } from '@/src/models/types';
 import {
     Building2,
     Plus,
@@ -264,7 +263,7 @@ function WorkspaceCard({ workspace, onSelect, onDelete }: WorkspaceCardProps) {
 // 메인 컴포넌트: WorkspaceListScreen
 // ==========================================
 interface WorkspaceListScreenProps {
-    user: AuthUser;
+    user: User;
     onSelectWorkspace: (workspace: Workspace) => void;
     onLogout: () => void;
 }
@@ -289,14 +288,8 @@ export function WorkspaceListScreen({ user, onSelectWorkspace, onLogout }: Works
         fetchWorkspaces();
     }, []);
 
-    const handleLogout = async () => {
-        try {
-            await logout();
-            onLogout();
-        } catch (error) {
-            console.error('Logout failed:', error);
-            onLogout();
-        }
+    const handleLogout = () => {
+        onLogout();
     };
 
     const handleWorkspaceCreated = (newWorkspace: Workspace) => {
