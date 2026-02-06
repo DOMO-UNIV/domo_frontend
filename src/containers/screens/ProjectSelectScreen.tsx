@@ -6,13 +6,12 @@ import {
     createProject,
     deleteProject,
     getWorkspaceMembers,
-    logout,
-    getMyInfo,
     getMyActivities,
     updateProfileImage,
     updateMyInfo,
 } from '@/src/models/api';
-import type { Project, Workspace, AuthUser, User, Member } from '@/src/models/types';
+import type { Project, Workspace, User, Member } from '@/src/models/types';
+import { useUser } from '@/src/lib/contexts/UserContext';
 import type { ActivityLog } from '@/src/models/api/activity';
 import {
     ArrowLeft,
@@ -391,13 +390,16 @@ type ViewState = 'projects' | 'mypage' | 'settings' | 'community';
 
 interface ProjectSelectScreenProps {
     workspace: Workspace;
-    user: AuthUser;
+    user: User;
     onSelectProject: (project: Project) => void;
     onBack: () => void;
     onLogout: () => void;
 }
 
-export function ProjectSelectScreen({ workspace, user, onSelectProject, onBack, onLogout }: ProjectSelectScreenProps) {
+export function ProjectSelectScreen({ workspace, user: propUser, onSelectProject, onBack, onLogout }: ProjectSelectScreenProps) {
+    const { user: contextUser, updateUser } = useUser();
+    const user = contextUser ?? propUser;
+
     const [projects, setProjects] = useState<Project[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
@@ -406,7 +408,6 @@ export function ProjectSelectScreen({ workspace, user, onSelectProject, onBack, 
 
     // 뷰 상태
     const [currentView, setCurrentView] = useState<ViewState>('projects');
-    const [fullUser, setFullUser] = useState<User | null>(null);
     const [activities, setActivities] = useState<ActivityLog[]>([]);
     const [mypageLoading, setMypageLoading] = useState(false);
 
@@ -449,18 +450,6 @@ export function ProjectSelectScreen({ workspace, user, onSelectProject, onBack, 
         fetchProjects();
     }, [workspace.id]);
 
-    // 초기 사용자 정보 로딩 (프로필 이미지 등)
-    useEffect(() => {
-        const fetchUserInfo = async () => {
-            try {
-                const userData = await getMyInfo();
-                setFullUser(userData);
-            } catch (error) {
-                console.error('Failed to load user info:', error);
-            }
-        };
-        fetchUserInfo();
-    }, []);
 
     // 마이페이지 데이터 로딩 (활동 로그)
     useEffect(() => {
@@ -480,14 +469,8 @@ export function ProjectSelectScreen({ workspace, user, onSelectProject, onBack, 
         }
     }, [currentView, activities.length]);
 
-    const handleLogout = async () => {
-        try {
-            await logout();
-            onLogout();
-        } catch (error) {
-            console.error('Logout failed:', error);
-            onLogout();
-        }
+    const handleLogout = () => {
+        onLogout();
     };
 
     const handleProjectCreated = (newProject: Project) => {
@@ -645,8 +628,8 @@ export function ProjectSelectScreen({ workspace, user, onSelectProject, onBack, 
                                         className="flex items-center gap-3 px-4 py-2 bg-white dark:bg-gray-800 rounded-full shadow-sm hover:shadow-md transition-all"
                                     >
                                         <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white text-sm font-bold overflow-hidden">
-                                            {fullUser?.profile_image ? (
-                                                <img src={getImageUrl(fullUser.profile_image)} alt={user.name} className="w-full h-full object-cover" />
+                                            {user.profile_image ? (
+                                                <img src={getImageUrl(user.profile_image)} alt={user.name} className="w-full h-full object-cover" />
                                             ) : (
                                                 <UserIcon size={18} />
                                             )}
@@ -785,10 +768,10 @@ export function ProjectSelectScreen({ workspace, user, onSelectProject, onBack, 
                             <div className="flex-1 flex items-center justify-center">
                                 <Loader2 className="animate-spin text-blue-500" size={40} />
                             </div>
-                        ) : fullUser ? (
+                        ) : user ? (
                             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 flex-1 min-h-0">
                                 <div className="lg:col-span-1">
-                                    <ProfileCard user={fullUser} setUser={setFullUser} />
+                                    <ProfileCard user={user} setUser={updateUser} />
                                 </div>
                                 <div className="lg:col-span-2 h-full min-h-[500px]">
                                     <ActivityList activities={activities} />
@@ -814,7 +797,7 @@ export function ProjectSelectScreen({ workspace, user, onSelectProject, onBack, 
                             key={settingsTab}
                             initialTab={settingsTab}
                             onLogout={onLogout}
-                            user={fullUser ? { name: fullUser.name, email: fullUser.email, profile_image: fullUser.profile_image } : { name: user.name, email: user.email }}
+                            user={{ name: user.name, email: user.email, profile_image: user.profile_image }}
                         />
                     </div>
                 )}
