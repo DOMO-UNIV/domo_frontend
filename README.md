@@ -35,9 +35,9 @@
 
 | Metric | Value |
 |--------|-------|
-| TypeScript 파일 | 90개 |
-| 총 코드 라인 | 20,080줄 |
-| containers/ | 18개 |
+| TypeScript 파일 | 95개 |
+| 총 코드 라인 | 21,219줄 |
+| containers/ | 23개 |
 | views/ | 37개 |
 | models/ | 21개 |
 
@@ -147,9 +147,9 @@ src/
 |
 |-- containers/
 |   |-- screens/
-|   |   |-- BoardScreen.tsx         메인 보드 (702 lines)
-|   |   |-- ProjectSelectScreen.tsx 프로젝트 선택 (785 lines)
-|   |   |-- WorkspaceListScreen.tsx 워크스페이스 목록 (381 lines)
+|   |   |-- BoardScreen.tsx         메인 보드 (853 lines)
+|   |   |-- ProjectSelectScreen.tsx 프로젝트 선택 (861 lines)
+|   |   |-- WorkspaceListScreen.tsx 워크스페이스 목록 (445 lines)
 |   |   |-- InviteAcceptScreen.tsx  초대 수락 (334 lines)
 |   |   |-- LoginScreen.tsx         로그인
 |   |   |-- SignupScreen.tsx        회원가입
@@ -158,23 +158,28 @@ src/
 |   |
 |   |-- hooks/
 |       |-- common/
-|       |   |-- usePendingSync.ts   Optimistic UI (581 lines)
-|       |   |-- useVoiceChat.ts     WebRTC 음성채팅 (482 lines)
+|       |   |-- usePendingSync.ts   Optimistic UI (735 lines)
+|       |   |-- useVoiceChat.ts     WebRTC 음성채팅 (579 lines)
 |       |   |-- useAudioAnalyser.ts 오디오 시각화 (166 lines)
 |       |-- board/
-|       |   |-- useSortableGrid.ts  드래그앤드롭 + 상대좌표 (630 lines)
-|       |   |-- useBoardSocket.ts   보드 실시간 동기화 (551 lines)
+|       |   |-- useSortableGrid.ts  드래그앤드롭 + 상대좌표 (786 lines)
+|       |   |-- useBoardSocket.ts   보드 실시간 동기화 (691 lines)
+|       |-- workspace/
+|       |   |-- useWorkspaceSocket.ts      워크스페이스 실시간 이벤트 (238 lines)
+|       |   |-- useWorkspaceListSocket.ts  워크스페이스 목록 실시간 동기화 (161 lines)
+|       |-- community/
+|       |   |-- useCommunitySocket.ts      커뮤니티 실시간 동기화 (166 lines)
 |       |-- chat/
-|           |-- useChatSocket.ts    채팅 WebSocket (146 lines)
+|           |-- useChatSocket.ts    채팅 WebSocket (180 lines)
 |
 |-- views/
 |   |-- board/
-|   |   |-- BoardCanvas.tsx         메인 캔버스 (1754 lines)
-|   |   |-- SortableGroup.tsx       그룹 컴포넌트 (297 lines)
+|   |   |-- BoardCanvas.tsx         메인 캔버스 + 라이브 커서 (2068 lines)
+|   |   |-- SortableGroup.tsx       그룹 컴포넌트 (321 lines)
 |   |   |-- SyncStatusIndicator.tsx 동기화 상태 (257 lines)
 |   |-- task/
-|   |   |-- TaskCard.tsx            태스크 카드 (492 lines)
-|   |   |-- TaskDetailModal.tsx     태스크 상세 + 파일 첨부 (663 lines)
+|   |   |-- TaskCard.tsx            태스크 카드 (534 lines)
+|   |   |-- TaskDetailModal.tsx     태스크 상세 + 파일 첨부 (729 lines)
 |   |-- chat/
 |   |   |-- ChatModal.tsx           플로팅 채팅 모달 (206 lines)
 |   |   |-- ChatView.tsx            전체화면 채팅 뷰 (189 lines)
@@ -196,9 +201,9 @@ src/
 |   |   |-- DockButton.tsx          독 버튼 (41 lines)
 |   |   |-- FileListPanel.tsx       파일 목록 패널 (254 lines)
 |   |-- community/
-|   |   |-- CommunityBoard.tsx      커뮤니티 보드 (175 lines)
+|   |   |-- CommunityBoard.tsx      커뮤니티 보드 (196 lines)
 |   |   |-- PostList.tsx            게시물 목록 (199 lines)
-|   |   |-- PostDetail.tsx          게시물 상세 (357 lines)
+|   |   |-- PostDetail.tsx          게시물 상세 + 이미지 수정 (491 lines)
 |   |   |-- PostWriter.tsx          게시물 작성 (161 lines)
 |   |-- workspace/
 |   |   |-- InviteModal.tsx         초대 모달 (316 lines)
@@ -208,24 +213,24 @@ src/
 |
 |-- models/
     |-- api/
-    |   |-- config.ts               API 설정 + WebSocket URL 변환 (139 lines)
-    |   |-- board.ts                보드 API + 좌표 정수화 (1108 lines)
+    |   |-- config.ts               API 설정 + WebSocket URL 변환 (166 lines)
+    |   |-- board.ts                보드 API + 좌표 정수화 (1237 lines)
     |   |-- workspace.ts            워크스페이스 API (600 lines)
     |   |-- chat.ts                 채팅 API (33 lines)
     |   |-- auth.ts                 인증 API
     |   |-- user.ts                 사용자 API
     |   |-- file.ts                 파일 API
-    |   |-- post.ts                 게시물 API
+    |   |-- post.ts                 게시물 API (301 lines)
     |   |-- activity.ts             활동 API
     |   |-- schedule.ts             일정 API
     |   |-- mappers.ts              응답 변환 (51 lines)
     |   |-- mock-data.ts            Mock 데이터 (540 lines)
     |-- types/
-    |   |-- index.ts                타입 정의 + 좌표 문서화 (469 lines)
+    |   |-- index.ts                타입 정의 + 좌표 문서화 (547 lines)
     |-- constants/
-    |   |-- grid.ts                 그리드 상수 + 좌표 변환 유틸 (347 lines)
+    |   |-- grid.ts                 그리드 상수 + 좌표 변환 유틸 (382 lines)
     |-- utils/
-        |-- groupLayout.ts          그룹 레이아웃 계산 (342 lines)
+        |-- groupLayout.ts          그룹 레이아웃 계산 (381 lines)
         |-- caseConverter.ts        camelCase ↔ snake_case 변환 (65 lines)
         |-- canvas.ts, image.ts
 ```
@@ -244,8 +249,10 @@ src/
     |
 (app) 라우트 그룹 [인증 가드: 비인증 유저 → /login]
     |-- /workspaces     → WorkspaceListScreen --> getWorkspaces()
+    |       |-- useWorkspaceListSocket (워크스페이스별 실시간 이벤트)
     |
     |-- /workspaces/{id} → ProjectSelectScreen --> getWorkspace()
+    |       |-- useWorkspaceSocket (프로젝트/멤버 실시간 반영)
     |
     |-- /workspaces/{id}/projects/{pid} → BoardScreen
             |
@@ -255,7 +262,10 @@ src/
             |-- BoardCanvas
                     |-- usePendingSync (Optimistic UI, Batch API)
                     |-- useSortableGrid (Drag & Drop, Relative Coordinates)
-                    |-- useBoardSocket (실시간 보드 동기화)
+                    |-- useBoardSocket (실시간 보드 동기화 + 라이브 커서)
+                    |
+                    |-- CommunityBoard
+                    |       |-- useCommunitySocket (커뮤니티 실시간 동기화)
                     |
                     |-- ChatView / ChatModal
                     |       |-- useChatSocket (실시간 채팅)
@@ -270,17 +280,21 @@ src/
 
 ### 3.4 Real-time Connections
 
-세 가지 독립적인 WebSocket 연결을 운영한다. 모든 경로는 `/api/ws` 접두사를 사용한다.
+여섯 가지 독립적인 WebSocket 연결을 운영한다. 모든 경로는 `/api/ws` 접두사를 사용한다.
 
 | Connection | Path | Protocol | Description |
 |------------|------|----------|-------------|
-| Board Sync | `/api/ws/projects/{id}/board` | WebSocket | 카드/그룹/연결선 실시간 동기화 |
+| Board Sync | `/api/ws/projects/{id}/board` | WebSocket | 카드/그룹/연결선 실시간 동기화 + 라이브 커서 |
 | Chat | `/api/ws/projects/{id}/chat` | WebSocket | 프로젝트 채팅 메시지 |
 | Voice | `/api/ws/projects/{id}/voice` | WebSocket + WebRTC | 음성채팅 시그널링 |
+| Workspace | `/api/ws/workspaces/{id}` | WebSocket | 멤버/프로젝트 변경 실시간 반영 |
+| Workspace List | `/api/ws/workspaces/{id}` (다중) | WebSocket | 워크스페이스 목록 페이지 실시간 동기화 |
+| Community | `/api/ws/community` | WebSocket | 커뮤니티 게시글/댓글 실시간 반영 |
 
 공통 기능:
 - Heartbeat (30초 간격)
 - Reconnection (지수 백오프, 최대 10회)
+- Self-echo 필터링 (`user_id` 기반, 자신이 보낸 이벤트 무시)
 - `getWebSocketUrl()` 헬퍼로 HTTP/HTTPS → WS/WSS 프로토콜 자동 변환
 
 ### 3.5 ViewMode
@@ -434,16 +448,13 @@ onGroupsUpdate(groups.map(g =>
 
 ### 5.5 레거시 데이터 호환
 
-기존 절대 좌표 데이터와의 호환을 위한 휴리스틱 판단:
+기존 절대 좌표 데이터와의 호환을 위한 범위 기반 판단:
 
 ```typescript
-// useSortableGrid.ts
-function isRelativeCoordinate(cardX, cardY, groupX, groupY, config) {
-  // 카드 좌표가 그룹 좌표보다 크면 → 절대 좌표 (레거시)
-  if (cardX >= groupX && cardY >= groupY) return false;
-
-  // 상대 좌표 범위 내면 → 상대 좌표
-  return cardX <= maxRelativeX && cardY >= minRelativeY;
+// grid.ts - isAlreadyRelativeCoordinate
+function isAlreadyRelativeCoordinate(cardX, cardY, config) {
+  // 상대 좌표 범위 내면 → 상대 좌표 (그룹 좌표 비교 제거)
+  return cardX >= 0 && cardX <= maxRelativeX && cardY >= minRelativeY;
 }
 ```
 
@@ -536,7 +547,7 @@ import { TaskCard } from '@/src/views/task';
 
 ## 7. Quality Status
 
-### 7.1 Current Status (2026-02-06)
+### 7.1 Current Status (2026-02-10)
 
 | Check | Status |
 |-------|--------|
@@ -713,9 +724,11 @@ containers/ --> models/ 18개 (API 호출)
 
 | Path | Description |
 |------|-------------|
-| /api/ws/projects/{id}/board | 보드 실시간 동기화 |
+| /api/ws/projects/{id}/board | 보드 실시간 동기화 + 라이브 커서 |
 | /api/ws/projects/{id}/chat | 프로젝트 채팅 |
 | /api/ws/projects/{id}/voice | 음성채팅 시그널링 (WebRTC) |
+| /api/ws/workspaces/{id} | 워크스페이스 멤버/프로젝트 이벤트 |
+| /api/ws/community | 커뮤니티 게시글/댓글 이벤트 |
 
 ### Troubleshooting
 
@@ -752,4 +765,4 @@ WebSocket 연결 실패 시:
 
 ---
 
-Last Updated: 2026-02-06
+Last Updated: 2026-02-10
